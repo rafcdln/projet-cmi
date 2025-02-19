@@ -1,7 +1,8 @@
 from dash import Dash, Input, Output
 import plotly.express as px
-from model import MeteoriteData
-from view import DashboardView
+from ..Model.model import MeteoriteData
+from ..View.view import DashboardView
+
 
 class DashboardController:
     def __init__(self, filepath):
@@ -51,7 +52,7 @@ class DashboardController:
             # Top 10 des classifications
             class_dist = px.bar(
                 filtered_df['recclass'].value_counts().head(10).reset_index(),
-                x='index',
+                x='id',
                 y='recclass',
                 title='Top 10 des classifications'
             )
@@ -71,6 +72,6 @@ class DashboardController:
         self.app.run_server(debug=True)
 
 if __name__ == '__main__':
-    filepath = 'Meteorite_Landings.csv'  # Remplacez par le chemin de votre fichier
+    filepath = 'dashboard/Meteorite_Landings.csv'  # Remplacez par le chemin de votre fichier
     controller = DashboardController(filepath)
     controller.run()
