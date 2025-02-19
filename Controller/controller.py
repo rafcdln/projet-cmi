@@ -52,7 +52,7 @@ class DashboardController:
             # Top 10 des classifications
             class_dist = px.bar(
                 filtered_df['recclass'].value_counts().head(10).reset_index(),
-                x='id',
+                x='count',
                 y='recclass',
                 title='Top 10 des classifications'
             )
