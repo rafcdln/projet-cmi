@@ -12,9 +12,9 @@ class MeteoriteData:
         self.df = self.df.dropna(subset=['reclat', 'reclong', 'year'])
         self.df = self.df[self.df['year'].between(1000, datetime.now().year)]
         
-        # Nettoyage des masses et filtrage supérieur à 10g
+        # Nettoyage des masses et filtrage supérieur à 1900g
         self.df['mass (g)'] = pd.to_numeric(self.df['mass (g)'], errors='coerce')
-        self.df = self.df[self.df['mass (g)'] > 1900]  # Seuil de 10 grammes
+        self.df = self.df[self.df['mass (g)'] > 1900]  # Seuil de 1900 grammes
         
         # Création des intervalles temporels
         self.df['decade'] = (self.df['year'] // 10) * 10
