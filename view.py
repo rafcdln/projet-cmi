@@ -15,11 +15,11 @@ def create_layout():
                 html.H4("Filtres interactifs"),
                 dcc.RangeSlider(
                     id='mass-slider',
-                    min=0,
+                    min=10,
                     max=100000,
                     step=100,
                     value=[0, 10000],
-                    marks={i: f'{i/1000}k' for i in range(0, 100001, 10000)}
+                    marks={i: f'{i/1000}' for i in range(0, 100001, 10000)}
                 ),
                 dcc.Dropdown(
                     id='class-dropdown',
