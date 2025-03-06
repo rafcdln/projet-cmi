@@ -1613,3 +1613,75 @@ def register_callbacks(app, data_path):
             )
             fig.update_layout(height=350)
             return fig
+
+    @app.callback(
+        [Output('prediction-results-content', 'style'),
+         Output('zone-analysis-content', 'style'),
+         Output('btn-prediction-results', 'className'),
+         Output('btn-zone-analysis', 'className')],
+        [Input('btn-prediction-results', 'n_clicks'),
+         Input('btn-zone-analysis', 'n_clicks')]
+    )
+    def toggle_prediction_views(pred_clicks, zone_clicks):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            # État initial : afficher les résultats de prédiction
+            return (
+                {'height': '200px', 'overflow': 'auto', 'display': 'block'},
+                {'height': '200px', 'overflow': 'auto', 'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
+        
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == 'btn-prediction-results':
+            return (
+                {'height': '200px', 'overflow': 'auto', 'display': 'block'},
+                {'height': '200px', 'overflow': 'auto', 'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
+        else:
+            return (
+                {'height': '200px', 'overflow': 'auto', 'display': 'none'},
+                {'height': '200px', 'overflow': 'auto', 'display': 'block'},
+                'btn btn-outline-primary me-2',
+                'btn btn-primary'
+            )
+
+    @app.callback(
+        [Output('distribution-map-content', 'style'),
+         Output('heatmap-content', 'style'),
+         Output('btn-distribution-map', 'className'),
+         Output('btn-heatmap', 'className')],
+        [Input('btn-distribution-map', 'n_clicks'),
+         Input('btn-heatmap', 'n_clicks')]
+    )
+    def toggle_map_views(dist_clicks, heat_clicks):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            # État initial : afficher la distribution
+            return (
+                {'display': 'block'},
+                {'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
+        
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == 'btn-distribution-map':
+            return (
+                {'display': 'block'},
+                {'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
+        else:
+            return (
+                {'display': 'none'},
+                {'display': 'block'},
+                'btn btn-outline-primary me-2',
+                'btn btn-primary'
+            )

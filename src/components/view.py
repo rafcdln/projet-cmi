@@ -296,57 +296,61 @@ def create_layout():
                             }
                         ),
                         html.Div([
-                            dcc.Tabs([
-                                dcc.Tab(label='Distribution', 
-                                    children=[
-                                        dcc.Loading(
-                                            id="loading-map",
-                                            type="circle",
-                                            children=dcc.Graph(
-                                                id='world-map',
-                                                config={
-                                                    'displayModeBar': True, 
-                                                    'scrollZoom': True,
-                                                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                                                    'doubleClick': 'reset'
-                                                },
-                                                style={'height': '650px'},
-                                                # Optimisation pour réduire les mises à jour
-                                                responsive=True,
-                                                loading_state={'is_loading': False, 'component_name': 'world-map'},
-                                                clear_on_unhover=True
-                                            )
-                                        )
-                                    ], 
-                                    className='custom-tab', 
-                                    selected_className='custom-tab--selected'
+                            # Remplacer les tabs par des boutons
+                            html.Div([
+                                html.Button(
+                                    "Distribution",
+                                    id='btn-distribution-map',
+                                    className="btn btn-outline-primary me-2"
                                 ),
-                                dcc.Tab(label='Carte de Chaleur', 
-                                    children=[
-                                        dcc.Loading(
-                                            id="loading-heatmap",
-                                            type="circle",
-                                            children=dcc.Graph(
-                                                id='heatmap',
-                                                config={
-                                                    'displayModeBar': True,
-                                                    'scrollZoom': True,
-                                                    'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
-                                                    'doubleClick': 'reset'
-                                                },
-                                                style={'height': '650px'},
-                                                # Optimisation pour réduire les mises à jour
-                                                responsive=True,
-                                                loading_state={'is_loading': False, 'component_name': 'heatmap'},
-                                                clear_on_unhover=True
-                                            )
-                                        )
-                                    ], 
-                                    className='custom-tab', 
-                                    selected_className='custom-tab--selected'
+                                html.Button(
+                                    "Carte de Chaleur",
+                                    id='btn-heatmap',
+                                    className="btn btn-outline-primary"
                                 ),
-                            ], className='custom-tabs')
-                        ], className='card-footer bg-transparent')
+                            ], className="d-flex mb-3"),
+                            
+                            # Conteneurs pour les cartes
+                            html.Div([
+                                dcc.Loading(
+                                    id="loading-map",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='world-map',
+                                        config={
+                                            'displayModeBar': True, 
+                                            'scrollZoom': True,
+                                            'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                                            'doubleClick': 'reset'
+                                        },
+                                        style={'height': '650px'},
+                                        responsive=True,
+                                        loading_state={'is_loading': False, 'component_name': 'world-map'},
+                                        clear_on_unhover=True
+                                    )
+                                )
+                            ], id='distribution-map-content', style={'display': 'block'}),
+                            
+                            html.Div([
+                                dcc.Loading(
+                                    id="loading-heatmap",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='heatmap',
+                                        config={
+                                            'displayModeBar': True,
+                                            'scrollZoom': True,
+                                            'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+                                            'doubleClick': 'reset'
+                                        },
+                                        style={'height': '650px'},
+                                        responsive=True,
+                                        loading_state={'is_loading': False, 'component_name': 'heatmap'},
+                                        clear_on_unhover=True
+                                    )
+                                )
+                            ], id='heatmap-content', style={'display': 'none'})
+                        ], className='card-body')
                     ], className='card h-100 shadow-sm')
                 ], className='mb-4'),
                 
@@ -585,7 +589,16 @@ def create_layout():
                 # Section de prédiction
                 html.Div([
                     html.Div([
-                        html.H5('Prédiction de Météorites', className='card-header py-3', style={'fontWeight': '400'}),
+                        html.H5('Prédiction de Météorites', 
+                            className='card-header py-3', 
+                            style={
+                                'fontWeight': '500',
+                                'fontSize': '24px',
+                                'fontFamily': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+                                'color': '#1d1d1f',
+                                'borderBottom': '1px solid #f5f5f7'
+                            }
+                        ),
                         html.Div([
                             # Premier panneau - Carte de prédiction
                             html.Div([
@@ -639,35 +652,46 @@ def create_layout():
                                             html.I(className="fas fa-magic me-2"),
                                             "Prédire"
                                         ], id='predict-button', n_clicks=0, 
-                                           className='btn btn-outline-success')
-                                    ], className='d-flex'),
+                                           className='btn btn-outline-primary')
+                                    ], className='d-flex mb-3'),
                                 ], className='mt-3')
                             ], className='col-md-7'),
                             
                             # Deuxième panneau - Résultats de prédiction et zone
                             html.Div([
                                 html.Div([
-                                    # Tabs pour résultats
-                                    dcc.Tabs([
-                                        dcc.Tab(label='Résultats de Prédiction', children=[
-                                            html.Div([
-                                                dcc.Loading(
-                                                    id="loading-prediction",
-                                                    type="circle",
-                                                    children=html.Div(id='prediction-output', className='p-3')
-                                                )
-                                            ], style={'height': '200px', 'overflow': 'auto'})
-                                        ], className='custom-tab', selected_className='custom-tab--selected'),
-                                        dcc.Tab(label='Analyse de Zone', children=[
-                                            html.Div([
-                                                dcc.Loading(
-                                                    id="loading-zone",
-                                                    type="circle",
-                                                    children=html.Div(id='zone-analysis-output', className='p-3')
-                                                )
-                                            ], style={'height': '200px', 'overflow': 'auto'})
-                                        ], className='custom-tab', selected_className='custom-tab--selected'),
-                                    ], className='custom-tabs mb-3'),
+                                    # Remplacer les tabs par des boutons
+                                    html.Div([
+                                        html.Div([
+                                            html.Button(
+                                                "Résultats de Prédiction",
+                                                id='btn-prediction-results',
+                                                className="btn btn-outline-primary me-2"
+                                            ),
+                                            html.Button(
+                                                "Analyse de Zone",
+                                                id='btn-zone-analysis',
+                                                className="btn btn-outline-primary"
+                                            ),
+                                        ], className="d-flex mb-3"),
+                                        
+                                        # Conteneurs pour les résultats
+                                        html.Div([
+                                            dcc.Loading(
+                                                id="loading-prediction",
+                                                type="circle",
+                                                children=html.Div(id='prediction-output', className='p-3')
+                                            )
+                                        ], id='prediction-results-content', style={'height': '200px', 'overflow': 'auto'}),
+                                        
+                                        html.Div([
+                                            dcc.Loading(
+                                                id="loading-zone",
+                                                type="circle",
+                                                children=html.Div(id='zone-analysis-output', className='p-3')
+                                            )
+                                        ], id='zone-analysis-content', style={'height': '200px', 'overflow': 'auto', 'display': 'none'}),
+                                    ]),
                                     
                                     # Importance des variables
                                     html.Div([
