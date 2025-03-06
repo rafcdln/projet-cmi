@@ -182,7 +182,7 @@ def register_callbacks(app, data_path):
                 height=700
             )
             return fig
-        
+            
         # Calcul de la taille des points basé sur la masse (logarithmique)
         min_size = 3
         max_size = min_size + point_size * 3
@@ -205,78 +205,76 @@ def register_callbacks(app, data_path):
         if color_mode == "class":
             # Fonction améliorée pour regrouper les classes de météorites
             def simplify_class(class_name):
-                # Traiter d'abord les cas spéciaux
+                # Traiter les cas spéciaux en premier
                 if 'Iron' in class_name:
-                    return 'Iron'  # Regrouper tous les types de fer
+                    return 'Météorites de fer'  # Toutes les météorites ferreuses
                 
-                if 'Mesosiderite' in class_name:
-                    return 'Mesosiderite'
+                if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
+                    return 'Métallo-rocheuses'  # Pallasite et Mésosidérite sont des métallo-rocheuses
                 
                 if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
-                    return 'HED'  # Regrouper la famille HED (Howardite-Eucrite-Diogenite)
+                    return 'Achondrites HED'  # Famille HED
                 
-                if 'Ureilite' in class_name:
-                    return 'Ureilite'
+                if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
+                    return 'Autres achondrites'  # Autres types d'achondrites
                 
-                if 'Pallasite' in class_name:
-                    return 'Pallasite'
+                # Chondrites ordinaires
+                if class_name.startswith('H'):
+                    return 'Chondrites H'
+                if class_name.startswith('L'):
+                    return 'Chondrites L'
+                if class_name.startswith('LL'):
+                    return 'Chondrites LL'
                 
-                # Nettoyer les noms typiques
-                # Enlever les chiffres et caractères spéciaux
-                base_class = ''.join(c for c in class_name if c.isalpha() or c == ' ')
-                base_class = base_class.strip()
+                # Chondrites carbonées
+                if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                    return 'Chondrites carbonées'
                 
-                # Gérer les cas pour les classes principales
-                if base_class.startswith('H'):
-                    return 'H'
-                if base_class.startswith('L'):
-                    return 'L'
-                if base_class.startswith('LL'):
-                    return 'LL'
-                if base_class.startswith('E'):
-                    return 'E'
-                if base_class.startswith('CM'):
-                    return 'CM'
-                if base_class.startswith('CO'):
-                    return 'CO'
-                if base_class.startswith('CV'):
-                    return 'CV'
-                if base_class.startswith('CI'):
-                    return 'CI'
-                if base_class.startswith('CK'):
-                    return 'CK'
-                if base_class.startswith('CR'):
-                    return 'CR'
+                # Chondrites à enstatite
+                if class_name.startswith('E'):
+                    return 'Chondrites E'
                 
-                # Si rien ne correspond, retourner la classe de base
-                return base_class if base_class else 'Autre'
+                # Météorites martiennes et lunaires
+                if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
+                    return 'Météorites martiennes'
+                if 'Lunar' in class_name:
+                    return 'Météorites lunaires'
+                
+                # Si rien ne correspond, mettre dans "Autres"
+                return 'Autres'
             
             # Appliquer la fonction de regroupement
             df_filtered['class_group'] = df_filtered['recclass'].apply(simplify_class)
             
-            # Compter le nombre de météorites par groupe de classes
-            class_counts = df_filtered['class_group'].value_counts()
+            # Calculer les pourcentages pour chaque groupe
+            category_data = []
+            for category in df_filtered['class_group'].unique():
+                count = len(df_filtered[df_filtered['class_group'] == category])
+                percentage = round(count / len(df_filtered) * 100, 1)
+                category_data.append({
+                    'category': category, 
+                    'count': count, 
+                    'percentage': percentage
+                })
             
-            # Si il y a trop de petites classes, regrouper dans "Autres"
-            if len(class_counts) > 12:
-                top_classes = class_counts.nlargest(11).index.tolist()
-                df_filtered['class_group'] = df_filtered['class_group'].apply(
-                    lambda x: x if x in top_classes else 'Autres'
-                )
+            # Trier par pourcentage décroissant
+            category_data = sorted(category_data, key=lambda x: x['percentage'], reverse=True)
             
-            # Trier les catégories pour que "Autres" soit à la fin
-            categories = sorted(df_filtered['class_group'].unique())
-            if 'Autres' in categories:
-                categories.remove('Autres')
-                categories.append('Autres')
-                
-            print(f"Nombre de catégories de météorites affichées: {len(categories)}")
+            # S'assurer que "Autres" est à la fin
+            if any(item['category'] == 'Autres' for item in category_data):
+                autres = next(item for item in category_data if item['category'] == 'Autres')
+                category_data.remove(autres)
+                category_data.append(autres)
+            
+            print(f"Nombre de catégories de météorites affichées: {len(category_data)}")
             
             # Pour chaque catégorie, créer une trace avec une couleur distincte
-            for category in categories:
+            for item in category_data:
+                category = item['category']
+                count = item['count']
+                percentage = item['percentage']
+                
                 df_cat = df_filtered[df_filtered['class_group'] == category]
-                count = len(df_cat)
-                percentage = round(count / len(df_filtered) * 100, 1)
                 fig.add_trace(go.Scattermapbox(
                     lat=df_cat['reclat'],
                     lon=df_cat['reclong'],
@@ -360,18 +358,16 @@ def register_callbacks(app, data_path):
                 zoom=FRANCE_ZOOM
             ),
             margin={"r":0,"t":30,"l":0,"b":0},
-            title=dict(
-                text=f"Distribution de {len(df_filtered)} météorites",
-                x=0.5,
-                xanchor='center'
-            ),
             legend=dict(
                 title=f"Classes de météorites" if color_mode == "class" else "Type de chute" if color_mode == "fall" else None,
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
+                yanchor="top",
+                y=-0.05,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1
             ),
             height=700
         )
@@ -409,7 +405,7 @@ def register_callbacks(app, data_path):
             )
             fig.update_layout(
                 mapbox=dict(
-                    style="carto-positron",
+                    style="carto-positron", 
                     center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
                     zoom=FRANCE_ZOOM
                 ),
@@ -451,10 +447,10 @@ def register_callbacks(app, data_path):
         fig.update_layout(
             mapbox=dict(
                 style=actual_style,
-                center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-                zoom=FRANCE_ZOOM
-            ),
-            margin={"r":0,"t":0,"l":0,"b":0},
+            center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
+            zoom=FRANCE_ZOOM
+        ),
+        margin={"r":0,"t":0,"l":0,"b":0},
             coloraxis_colorbar=dict(
                 title="Log10(Masse)",
                 titleside="right",
@@ -468,7 +464,7 @@ def register_callbacks(app, data_path):
         )
         
         return fig
-
+    
     @app.callback(
         Output('prediction-map', 'figure'),
         [Input('selected-location', 'data'),
@@ -552,15 +548,15 @@ def register_callbacks(app, data_path):
             ))
         
         # Mise à jour du layout
-        fig.update_layout(
-            mapbox=dict(
-                style=actual_style,
+            fig.update_layout(
+                mapbox=dict(
+                    style=actual_style,
                 center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
                 zoom=FRANCE_ZOOM
             ),
             margin={"r":0,"t":0,"l":0,"b":0},
             showlegend=True
-        )
+            )
         
         return fig
 
