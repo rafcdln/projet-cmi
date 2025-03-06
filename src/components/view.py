@@ -285,7 +285,16 @@ def create_layout():
                 # Carte du monde
                 html.Div([
                     html.Div([
-                        html.H5('Distribution Mondiale des Météorites', className='card-header py-3', style={'fontWeight': '400'}),
+                        html.H5('Distribution Mondiale des Météorites', 
+                            className='card-header py-3', 
+                            style={
+                                'fontWeight': '500',
+                                'fontSize': '24px',
+                                'fontFamily': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+                                'color': '#1d1d1f',
+                                'borderBottom': '1px solid #f5f5f7'
+                            }
+                        ),
                         html.Div([
                             dcc.Tabs([
                                 dcc.Tab(label='Distribution', 
