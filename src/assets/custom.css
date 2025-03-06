@@ -1,0 +1,494 @@
+/* Variables de couleurs Apple */
+:root {
+    --apple-blue: #0071e3;
+    --apple-gray: #86868b;
+    --apple-dark: #1d1d1f;
+    --apple-light: #f5f5f7;
+    --apple-border: #d2d2d7;
+}
+
+/* Styles généraux */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--apple-light);
+    color: var(--apple-dark);
+}
+
+/* Styles des cartes */
+.card {
+    background-color: #ffffff;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Styles des titres */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    color: var(--apple-dark);
+}
+
+/* Styles des dropdowns */
+.modern-dropdown .Select-control {
+    border-radius: 8px;
+    border: 1px solid var(--apple-border);
+    background-color: #ffffff;
+    transition: all 0.2s ease;
+}
+
+.modern-dropdown .Select-control:hover {
+    border-color: var(--apple-blue);
+}
+
+.modern-dropdown .Select-menu-outer {
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.modern-dropdown .Select-option {
+    padding: 8px 12px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.modern-dropdown .Select-option:hover {
+    background-color: var(--apple-light);
+}
+
+.modern-dropdown .Select-option.is-selected {
+    background-color: var(--apple-blue);
+    color: #ffffff;
+}
+
+/* Styles des boutons */
+.btn {
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-outline-primary {
+    border: 1px solid var(--apple-blue);
+    color: var(--apple-blue);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--apple-blue);
+    color: #ffffff;
+}
+
+.btn-outline-success {
+    border: 1px solid #28a745;
+    color: #28a745;
+}
+
+.btn-outline-success:hover {
+    background-color: #28a745;
+    color: #ffffff;
+}
+
+/* Styles des inputs */
+.form-control {
+    border-radius: 8px;
+    border: 1px solid var(--apple-border);
+    padding: 8px 12px;
+    transition: all 0.2s ease;
+}
+
+.form-control:focus {
+    border-color: var(--apple-blue);
+    box-shadow: 0 0 0 0.2rem rgba(0,113,227,0.25);
+}
+
+/* Styles des tooltips */
+.tooltip {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+}
+
+.tooltip-inner {
+    background-color: rgba(0,0,0,0.8);
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+/* Styles des onglets */
+.custom-tabs {
+    border-bottom: 1px solid var(--apple-border);
+}
+
+.custom-tab {
+    color: var(--apple-gray);
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 400;
+    transition: all 0.2s ease;
+}
+
+.custom-tab:hover {
+    color: var(--apple-blue);
+}
+
+.custom-tab--selected {
+    color: var(--apple-blue);
+    border-bottom: 2px solid var(--apple-blue);
+    font-weight: 500;
+}
+
+/* Styles des graphiques */
+.js-plotly-plot {
+    border-radius: 8px !important;
+}
+
+/* Styles des icônes d'information */
+.fa-info-circle {
+    color: var(--apple-gray);
+    transition: all 0.2s ease;
+}
+
+.fa-info-circle:hover {
+    color: var(--apple-blue);
+}
+
+/* Styles des statistiques */
+.stats-card {
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    transition: all 0.2s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Styles des tableaux */
+.table {
+    font-size: 14px;
+}
+
+.table th {
+    font-weight: 500;
+    color: var(--apple-gray);
+    border-bottom: 1px solid var(--apple-border);
+}
+
+.table td {
+    color: var(--apple-dark);
+    border-bottom: 1px solid var(--apple-border);
+}
+
+/* Styles des tooltips personnalisés */
+.custom-tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.custom-tooltip .tooltip-text {
+    visibility: hidden;
+    background-color: rgba(0,0,0,0.8);
+    color: #ffffff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 6px 12px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.custom-tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Styles des animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+/* Card styling */
+.card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+}
+
+.card-header {
+    background-color: white;
+    border-bottom: 1px solid #f1f1f1;
+    border-top-left-radius: 12px !important;
+    border-top-right-radius: 12px !important;
+}
+
+/* Dropdowns */
+.Select-control, .Select-menu-outer {
+    border-radius: 8px;
+}
+
+.Select-control {
+    border: 1px solid #ced4da;
+    box-shadow: none;
+}
+
+.Select-control:hover {
+    border-color: #0071e3;
+}
+
+/* Sliders */
+.rc-slider-track {
+    background-color: #0071e3;
+}
+
+.rc-slider-handle {
+    border-color: #0071e3;
+    background-color: white;
+}
+
+.rc-slider-handle:hover {
+    border-color: #0071e3;
+    box-shadow: 0 0 0 5px rgba(0,113,227,0.2);
+}
+
+.rc-slider-handle:active {
+    border-color: #0071e3;
+    box-shadow: 0 0 0 5px rgba(0,113,227,0.2);
+}
+
+/* Loading spinner */
+._dash-loading-callback {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Tables */
+.table {
+    color: #1d1d1f;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0,113,227,0.05);
+}
+
+/* Mapbox styles */
+.mapboxgl-map {
+    border-radius: 8px;
+}
+
+.mapboxgl-ctrl-bottom-right {
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+.mapboxgl-ctrl-attrib-inner {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Graph titles */
+.gtitle {
+    font-weight: 400 !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Value boxes */
+.stats-box {
+    background-color: white;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.2s ease;
+}
+
+.stats-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+}
+
+.stats-value {
+    font-size: 1.5rem;
+    font-weight: 400;
+    color: #0071e3;
+}
+
+.stats-label {
+    color: #86868b;
+    font-size: 0.9rem;
+}
+
+/* Footer */
+footer {
+    color: #86868b;
+    font-size: 0.9rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding: 0.5rem;
+    }
+    
+    .card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Tooltip styling */
+.rc-slider-tooltip {
+    z-index: 9999 !important;
+}
+
+.rc-slider-tooltip-inner {
+    background-color: #1d1d1f;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+.rc-slider-tooltip-arrow {
+    border-top-color: #1d1d1f !important;
+}
+
+/* Styles personnalisés pour le dashboard */
+.form-label {
+    font-weight: 500;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+/* Info tooltip styles */
+.text-muted {
+    font-size: 0.9rem;
+    color: #86868b;
+}
+
+.text-muted i {
+    color: #0071e3;
+}
+
+/* Optimisation des états de chargement */
+._dash-loading {
+    margin: auto !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background-color: rgba(255, 255, 255, 0.5);
+    z-index: 99;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.1s ease-in-out;
+    backdrop-filter: blur(2px);
+}
+
+._dash-loading-callback {
+    font-size: 25px;
+    color: var(--apple-blue);
+    z-index: 100;
+}
+
+/* Réduire le clignotement pendant les mises à jour */
+.dash-graph {
+    transition: opacity 0.2s ease-in-out;
+    will-change: transform;
+}
+
+.dash-graph.js-plotly-plot {
+    transform: translateZ(0);
+}
+
+/* Amélioration des animations de transition */
+.row {
+    transition: all 0.3s ease-in-out;
+}
+
+.d-none {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Styles d'animation pour les boutons */
+.btn.active {
+    box-shadow: 0 0 0 0.15rem rgba(0, 113, 227, 0.25);
+    transition: all 0.2s ease-in-out;
+}
+
+/* Classes d'optimisation des performances */
+.gpu-accelerated {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+/* Styles pour le mode 'loading' réduit */
+.minimal-loading ._dash-loading {
+    background-color: transparent;
+    backdrop-filter: none;
+}
+
+.minimal-loading ._dash-loading-callback {
+    font-size: 16px;
+    opacity: 0.5;
+}
+
+/* Position fixe pour le spinner de chargement */
+.loading-overlay {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.loading-overlay i {
+    color: var(--apple-blue);
+}
+
+/* Cacher les SpinKit de Dash pendant les petites mises à jour */
+.short-update ._dash-loading {
+    display: none !important;
+} 
