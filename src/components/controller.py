@@ -1146,6 +1146,124 @@ def register_callbacks(app, data_path):
         
         return fig
 
+    @app.callback(
+        Output('class-distribution-sorted', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value')]
+    )
+    @error_handling_callback
+    def update_class_distribution_sorted(mass_range, classes, falls, decades):
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+        
+        if df.empty:
+            # Retourner un graphique vide avec un message
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+        
+        # Fonction pour grouper les classes de météorites
+        def simplify_class(class_name):
+            if 'Iron' in class_name:
+                return 'Météorites de fer'
+            if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
+                return 'Métallo-rocheuses'
+            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                return 'Achondrites HED'
+            if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
+                return 'Autres achondrites'
+            if class_name.startswith('H'):
+                return 'Chondrites H'
+            if class_name.startswith('L'):
+                return 'Chondrites L'
+            if class_name.startswith('LL'):
+                return 'Chondrites LL'
+            if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                return 'Chondrites carbonées'
+            if class_name.startswith('E'):
+                return 'Chondrites E'
+            if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
+                return 'Météorites martiennes'
+            if 'Lunar' in class_name:
+                return 'Météorites lunaires'
+            return 'Autres'
+        
+        # Appliquer le groupement et calculer les statistiques
+        df['class_group'] = df['recclass'].apply(simplify_class)
+        class_stats = df.groupby('class_group').agg({
+            'mass (g)': ['count', 'mean', 'sum']
+        }).round(2)
+        
+        class_stats.columns = ['count', 'mean_mass', 'total_mass']
+        class_stats = class_stats.reset_index()
+        
+        # Trier par nombre de météorites
+        class_stats = class_stats.sort_values('count', ascending=True)
+        
+        # Déplacer "Autres" à la fin si présent
+        if 'Autres' in class_stats['class_group'].values:
+            autres = class_stats[class_stats['class_group'] == 'Autres']
+            class_stats = pd.concat([
+                class_stats[class_stats['class_group'] != 'Autres'],
+                autres
+            ])
+        
+        # Créer le graphique horizontal
+        fig = go.Figure()
+        
+        # Ajouter les barres
+        fig.add_trace(go.Bar(
+            y=class_stats['class_group'],
+            x=class_stats['count'],
+            orientation='h',
+            marker_color='#0071e3',
+            text=class_stats['count'].apply(lambda x: f"{x:,}"),
+            textposition='auto',
+            hovertemplate="<b>%{y}</b><br>" +
+                         "Nombre: %{x:,}<br>" +
+                         "<extra></extra>"
+        ))
+        
+        # Mise en page
+        fig.update_layout(
+            title={
+                'text': "Distribution des Classes de Météorites",
+                'y':0.95,
+                'x':0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title="Nombre de météorites",
+            yaxis_title="",
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            xaxis=dict(
+                gridcolor='rgba(0,0,0,0.1)',
+                showgrid=True
+            ),
+            yaxis=dict(
+                automargin=True
+            ),
+            bargap=0.2
+        )
+        
+        return fig
+
     # Optimiser le callback d'analyse des panels
     @app.callback(
         [Output('panel-distributions', 'className'),

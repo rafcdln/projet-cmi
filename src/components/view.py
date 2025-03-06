@@ -377,6 +377,7 @@ def create_layout():
                                 
                                 # Section Distributions
                                 html.Div([
+                                    # Distribution des masses
                                     html.Div([
                                         html.H6([
                                             'Distribution des masses', 
@@ -385,63 +386,48 @@ def create_layout():
                                         dcc.Loading(
                                             id="loading-mass-hist",
                                             type="circle",
-                                            children=dcc.Graph(
-                                                id='mass-hist', 
-                                                config={'displayModeBar': False},
-                                                # Éviter des mises à jour inutiles pendant le zoom/déplacement
-                                                loading_state={'is_loading': False, 'component_name': 'mass-hist'}
-                                            )
+                                            children=dcc.Graph(id='mass-hist', config={'displayModeBar': False})
                                         )
                                     ], className="col-md-6"),
+                                    
+                                    # Distribution des classes
                                     html.Div([
                                         html.H6([
                                             'Distribution des classes', 
-                                            html.I(className='fas fa-info-circle ms-2', id='class-distribution-info', style={'cursor': 'pointer'})
+                                            html.I(className='fas fa-info-circle ms-2', id='class-distribution-sorted-info', style={'cursor': 'pointer'})
                                         ], className='mt-3 mb-2'),
                                         dcc.Loading(
-                                            id="loading-class-dist",
+                                            id="loading-class-distribution-sorted",
                                             type="circle",
-                                            children=dcc.Graph(
-                                                id='class-distribution', 
-                                                config={'displayModeBar': False},
-                                                # Éviter des mises à jour inutiles pendant le zoom/déplacement
-                                                loading_state={'is_loading': False, 'component_name': 'class-distribution'}
-                                            )
+                                            children=dcc.Graph(id='class-distribution-sorted', config={'displayModeBar': False})
                                         )
                                     ], className="col-md-6"),
-                                    # Space for two more distributions that can be added later
-                                    html.Div([
-                                        html.H6([
-                                            'Distribution géographique', 
-                                            html.I(className='fas fa-info-circle ms-2', id='geo-distribution-info', style={'cursor': 'pointer'})
-                                        ], className='mt-3 mb-2'),
-                                        dcc.Loading(
-                                            id="loading-geo-dist",
-                                            type="circle",
-                                            children=dcc.Graph(id='geo-distribution', figure=px.density_mapbox(
-                                                pd.DataFrame({'lat': [0], 'lon': [0]}),
-                                                lat='lat', lon='lon', zoom=1,
-                                                mapbox_style="carto-positron"
-                                            ).update_layout(margin={"r":0,"t":0,"l":0,"b":0}), 
-                                            config={'displayModeBar': False})
-                                        )
-                                    ], className="col-md-6"),
+                                    
+                                    # Distribution des années
                                     html.Div([
                                         html.H6([
                                             'Distribution des années', 
                                             html.I(className='fas fa-info-circle ms-2', id='year-distribution-info', style={'cursor': 'pointer'})
                                         ], className='mt-3 mb-2'),
                                         dcc.Loading(
-                                            id="loading-year-dist",
+                                            id="loading-year-distribution",
                                             type="circle",
-                                            children=dcc.Graph(id='year-distribution', figure=px.histogram(
-                                                pd.DataFrame({'year': np.random.normal(1950, 30, 500)}),
-                                                x='year', nbins=50,
-                                                height=300  # Réduire la hauteur
-                                            ).update_layout(margin={"r":20,"t":20,"l":20,"b":20}),
-                                            config={'displayModeBar': False})
+                                            children=dcc.Graph(id='year-distribution', config={'displayModeBar': False})
                                         )
                                     ], className="col-md-6"),
+                                    
+                                    # Distribution géographique
+                                    html.Div([
+                                        html.H6([
+                                            'Distribution géographique', 
+                                            html.I(className='fas fa-info-circle ms-2', id='geo-distribution-info', style={'cursor': 'pointer'})
+                                        ], className='mt-3 mb-2'),
+                                        dcc.Loading(
+                                            id="loading-geo-distribution",
+                                            type="circle",
+                                            children=dcc.Graph(id='geo-distribution', config={'displayModeBar': False})
+                                        )
+                                    ], className="col-md-6")
                                 ], id="panel-distributions", className="row"),
                                 
                                 # Section Séries Chronologiques
@@ -813,5 +799,9 @@ def create_layout():
         dbc.Tooltip(
             "Cette matrice de nuages de points permet d'explorer les relations entre plusieurs variables simultanément.",
             target='scatter-matrix-info'
+        ),
+        dbc.Tooltip(
+            "Ce graphique montre la distribution des classes de météorites triées par fréquence.",
+            target='class-distribution-sorted-info'
         )
     ], className='container-fluid py-4', style={'backgroundColor': '#f5f5f7'})
