@@ -8,7 +8,7 @@ import os
 DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "Meteorite_Landings.csv")
 
 # Configuration de la carte
-DEFAULT_MAP_STYLE = "clair"  # Style clair (carto-positron)
+DEFAULT_MAP_STYLE = "standard"  # Style standard
 DEFAULT_COLOR_MODE = "class"
 
 # Configuration des filtres
