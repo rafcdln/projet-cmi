@@ -202,14 +202,81 @@ def register_callbacks(app, data_path):
         fig = go.Figure()
         
         # Pour le mode "class" ou "fall", on doit créer un groupe par catégorie
-        if color_mode in ["class", "fall"]:
-            # Déterminer la colonne à utiliser et faire des groupes
-            column = "recclass" if color_mode == "class" else "fall"
-            categories = df_filtered[column].unique()
+        if color_mode == "class":
+            # Fonction améliorée pour regrouper les classes de météorites
+            def simplify_class(class_name):
+                # Traiter d'abord les cas spéciaux
+                if 'Iron' in class_name:
+                    return 'Iron'  # Regrouper tous les types de fer
+                
+                if 'Mesosiderite' in class_name:
+                    return 'Mesosiderite'
+                
+                if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                    return 'HED'  # Regrouper la famille HED (Howardite-Eucrite-Diogenite)
+                
+                if 'Ureilite' in class_name:
+                    return 'Ureilite'
+                
+                if 'Pallasite' in class_name:
+                    return 'Pallasite'
+                
+                # Nettoyer les noms typiques
+                # Enlever les chiffres et caractères spéciaux
+                base_class = ''.join(c for c in class_name if c.isalpha() or c == ' ')
+                base_class = base_class.strip()
+                
+                # Gérer les cas pour les classes principales
+                if base_class.startswith('H'):
+                    return 'H'
+                if base_class.startswith('L'):
+                    return 'L'
+                if base_class.startswith('LL'):
+                    return 'LL'
+                if base_class.startswith('E'):
+                    return 'E'
+                if base_class.startswith('CM'):
+                    return 'CM'
+                if base_class.startswith('CO'):
+                    return 'CO'
+                if base_class.startswith('CV'):
+                    return 'CV'
+                if base_class.startswith('CI'):
+                    return 'CI'
+                if base_class.startswith('CK'):
+                    return 'CK'
+                if base_class.startswith('CR'):
+                    return 'CR'
+                
+                # Si rien ne correspond, retourner la classe de base
+                return base_class if base_class else 'Autre'
+            
+            # Appliquer la fonction de regroupement
+            df_filtered['class_group'] = df_filtered['recclass'].apply(simplify_class)
+            
+            # Compter le nombre de météorites par groupe de classes
+            class_counts = df_filtered['class_group'].value_counts()
+            
+            # Si il y a trop de petites classes, regrouper dans "Autres"
+            if len(class_counts) > 12:
+                top_classes = class_counts.nlargest(11).index.tolist()
+                df_filtered['class_group'] = df_filtered['class_group'].apply(
+                    lambda x: x if x in top_classes else 'Autres'
+                )
+            
+            # Trier les catégories pour que "Autres" soit à la fin
+            categories = sorted(df_filtered['class_group'].unique())
+            if 'Autres' in categories:
+                categories.remove('Autres')
+                categories.append('Autres')
+                
+            print(f"Nombre de catégories de météorites affichées: {len(categories)}")
             
             # Pour chaque catégorie, créer une trace avec une couleur distincte
-            for i, category in enumerate(categories):
-                df_cat = df_filtered[df_filtered[column] == category]
+            for category in categories:
+                df_cat = df_filtered[df_filtered['class_group'] == category]
+                count = len(df_cat)
+                percentage = round(count / len(df_filtered) * 100, 1)
                 fig.add_trace(go.Scattermapbox(
                     lat=df_cat['reclat'],
                     lon=df_cat['reclong'],
@@ -228,7 +295,37 @@ def register_callbacks(app, data_path):
                         axis=1
                     ),
                     hoverinfo='text',
-                    name=category
+                    name=f"{category} ({count}, {percentage}%)"
+                ))
+            
+        elif color_mode == "fall":
+            # Déterminer la colonne à utiliser et faire des groupes
+            categories = df_filtered["fall"].unique()
+            
+            # Pour chaque catégorie, créer une trace avec une couleur distincte
+            for category in sorted(categories):
+                df_cat = df_filtered[df_filtered["fall"] == category]
+                count = len(df_cat)
+                percentage = round(count / len(df_filtered) * 100, 1)
+                fig.add_trace(go.Scattermapbox(
+                    lat=df_cat['reclat'],
+                    lon=df_cat['reclong'],
+                    mode='markers',
+                    marker=dict(
+                        size=sizes[df_filtered.index.isin(df_cat.index)],
+                        opacity=opacity,
+                        sizemode='diameter'
+                    ),
+                    text=df_cat.apply(
+                        lambda row: f"<b>{row['name']}</b><br>" +
+                                  f"Masse: {row['mass (g)']:.1f}g<br>" +
+                                  f"Année: {int(row['year']) if not np.isnan(row['year']) else 'Inconnue'}<br>" +
+                                  f"Classe: {row['recclass']}<br>" +
+                                  f"Type: {row['fall']}", 
+                        axis=1
+                    ),
+                    hoverinfo='text',
+                    name=f"{category} ({count}, {percentage}%)"
                 ))
         else:  # Mode "mass" ou autre
             fig.add_trace(go.Scattermapbox(
@@ -1294,8 +1391,13 @@ def register_callbacks(app, data_path):
             margin={"r":20,"t":40,"l":20,"b":40},
             paper_bgcolor='white',
             plot_bgcolor='white',
-            xaxis_title="Mois",
-            yaxis_title="Nombre de météorites"
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
         )
         
         return fig
