@@ -1177,77 +1177,81 @@ def register_callbacks(app, data_path):
         
         # Fonction pour grouper les classes de météorites
         def simplify_class(class_name):
-            if 'Iron' in class_name:
-                return 'Météorites de fer'
-            if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
-                return 'Métallo-rocheuses'
-            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
-                return 'Achondrites HED'
-            if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
-                return 'Autres achondrites'
+            components = []
+            # Chondrites ordinaires
             if class_name.startswith('H'):
-                return 'Chondrites H'
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (20-25%)'])
             if class_name.startswith('L'):
-                return 'Chondrites L'
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (15-20%)'])
             if class_name.startswith('LL'):
-                return 'Chondrites LL'
-            if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
-                return 'Chondrites carbonées'
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (10-15%)'])
+            
+            # Chondrites carbonées
+            if any(x in class_name for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                components.extend(['Matière organique', 'Minéraux hydratés', 'Carbone'])
+            
+            # Chondrites à enstatite
             if class_name.startswith('E'):
-                return 'Chondrites E'
+                components.append('Enstatite')
+            
+            # Achondrites HED
+            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                components.extend(['Pyroxène', 'Plagioclase'])
+            
+            # Météorites de fer
+            if 'Iron' in class_name:
+                components.extend(['Fer (90-95%)', 'Nickel (5-10%)'])
+            
+            # Métallo-rocheuses
+            if 'Pallasite' in class_name:
+                components.extend(['Olivine (50%)', 'Alliage Fer-Nickel (50%)'])
+            if 'Mesosiderite' in class_name:
+                components.extend(['Silicates', 'Alliage Fer-Nickel'])
+            
+            # Météorites martiennes (SNC)
             if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
-                return 'Météorites martiennes'
+                components.extend(['Pyroxène', 'Olivine', 'Plagioclase'])
+            
+            # Météorites lunaires
             if 'Lunar' in class_name:
-                return 'Météorites lunaires'
-            return 'Autres'
+                components.extend(['Anorthite', 'Pyroxène', 'Olivine'])
+            
+            if not components:
+                components.append('Composition inconnue')
+            return components
         
-        # Appliquer le groupement et calculer les statistiques
-        df['class_group'] = df['recclass'].apply(simplify_class)
-        class_stats = df.groupby('class_group').agg({
-            'mass (g)': ['count', 'mean', 'sum']
-        }).round(2)
+        # Extraire et compter tous les composants
+        all_components = []
+        for class_name in df['recclass']:
+            all_components.extend(extract_components(class_name))
         
-        class_stats.columns = ['count', 'mean_mass', 'total_mass']
-        class_stats = class_stats.reset_index()
+        # Compter les composants
+        component_counts = pd.Series(all_components).value_counts()
         
-        # Trier par nombre de météorites
-        class_stats = class_stats.sort_values('count', ascending=True)
-        
-        # Déplacer "Autres" à la fin si présent
-        if 'Autres' in class_stats['class_group'].values:
-            autres = class_stats[class_stats['class_group'] == 'Autres']
-            class_stats = pd.concat([
-                class_stats[class_stats['class_group'] != 'Autres'],
-                autres
-            ])
-        
-        # Créer le graphique horizontal
+        # Créer le graphique
         fig = go.Figure()
         
         # Ajouter les barres
         fig.add_trace(go.Bar(
-            y=class_stats['class_group'],
-            x=class_stats['count'],
+            y=component_counts.index,
+            x=component_counts.values,
             orientation='h',
             marker_color='#0071e3',
-            text=class_stats['count'].apply(lambda x: f"{x:,}"),
+            text=component_counts.values,
             textposition='auto',
-            hovertemplate="<b>%{y}</b><br>" +
-                         "Nombre: %{x:,}<br>" +
-                         "<extra></extra>"
         ))
         
         # Mise en page
         fig.update_layout(
             title={
-                'text': "Distribution des Classes de Météorites",
+                'text': "Composants Principaux des Météorites",
                 'y':0.95,
                 'x':0.5,
                 'xanchor': 'center',
                 'yanchor': 'top'
             },
             xaxis_title="Nombre de météorites",
-            yaxis_title="",
+            yaxis_title="Composant",
             height=400,
             margin=dict(l=10, r=10, t=40, b=10),
             paper_bgcolor='white',
@@ -1320,7 +1324,6 @@ def register_callbacks(app, data_path):
         
         return dist_panel_state, time_panel_state, corr_panel_state, dist_btn_state, time_btn_state, corr_btn_state
 
-    # Callback pour la distribution des années
     @app.callback(
         Output('year-distribution', 'figure'),
         [Input('mass-slider', 'value'),
@@ -1338,7 +1341,6 @@ def register_callbacks(app, data_path):
         )
         
         if df.empty:
-            # Retourner un graphique vide
             return px.histogram(
                 pd.DataFrame({'year': []}),
                 x='year',
@@ -1349,14 +1351,43 @@ def register_callbacks(app, data_path):
         # Nettoyer les données
         df = df.dropna(subset=['year'])
         
-        # Créer la figure
+        # Fonction pour grouper les classes de météorites
+        def simplify_class(class_name):
+            if 'Iron' in class_name:
+                return 'Météorites de fer'
+            if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
+                return 'Métallo-rocheuses'
+            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                return 'Achondrites HED'
+            if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
+                return 'Autres achondrites'
+            if class_name.startswith('H'):
+                return 'Chondrites H'
+            if class_name.startswith('L'):
+                return 'Chondrites L'
+            if class_name.startswith('LL'):
+                return 'Chondrites LL'
+            if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                return 'Chondrites carbonées'
+            if class_name.startswith('E'):
+                return 'Chondrites E'
+            if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
+                return 'Météorites martiennes'
+            if 'Lunar' in class_name:
+                return 'Météorites lunaires'
+            return 'Autres'
+        
+        # Appliquer le groupement
+        df['class_group'] = df['recclass'].apply(simplify_class)
+        
+        # Créer l'histogramme avec coloration par type
         fig = px.histogram(
             df,
             x='year',
+            color='class_group',
             nbins=40,
-            color_discrete_sequence=['#0071e3'],
-            labels={'year': 'Année', 'count': 'Nombre de météorites'},
-            title=f"Distribution des météorites par année (n={len(df)})"
+            labels={'year': 'Année', 'count': 'Nombre de météorites', 'class_group': 'Type'},
+            color_discrete_sequence=px.colors.qualitative.Bold
         )
         
         # Personnaliser la mise en page
@@ -1366,88 +1397,28 @@ def register_callbacks(app, data_path):
             plot_bgcolor='white',
             xaxis_title="Année",
             yaxis_title="Nombre de météorites",
-            bargap=0.1
-        )
-        
-        return fig
-
-    # Callback pour la distribution géographique
-    @app.callback(
-        Output('geo-distribution', 'figure'),
-        [Input('mass-slider', 'value'),
-         Input('class-dropdown', 'value'),
-         Input('fall-checklist', 'value'),
-         Input('decade-slider', 'value')]
-    )
-    @error_handling_callback
-    def update_geo_distribution(mass_range, classes, falls, decades):
-        df = meteorite_data.get_filtered_data(
-            mass_range=mass_range,
-            classification=classes,
-            fall_type=falls,
-            decade_range=decades
-        )
-        
-        if df.empty:
-            return px.density_mapbox(
-                pd.DataFrame({'lat': [FRANCE_LAT], 'lon': [FRANCE_LON]}),
-                lat='lat', lon='lon',
-                zoom=FRANCE_ZOOM,
-                center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-                mapbox_style="carto-positron",
-                height=300
-            ).update_layout(
-                mapbox=dict(
-                    center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-                    zoom=FRANCE_ZOOM
-                ),
-                margin={"r":0,"t":0,"l":0,"b":0}
-            )
-
-        # Nettoyer les données
-        df = df.dropna(subset=['reclat', 'reclong'])
-        
-        # Créer la carte de densité
-        fig = px.density_mapbox(
-            df,
-            lat='reclat',
-            lon='reclong',
-            z='mass (g)',
-            radius=10,
-            zoom=FRANCE_ZOOM,
-            center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-            mapbox_style="carto-positron",
-            color_continuous_scale="Viridis",
-            labels={'mass (g)': 'Masse (g)'},
-            height=300
-        )
-        
-        # Personnaliser la mise en page
-        fig.update_layout(
-            mapbox=dict(
-                center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-                zoom=FRANCE_ZOOM
-            ),
-            margin={"r":0,"t":0,"l":0,"b":0},
-            coloraxis_colorbar=dict(
-                title="Masse (g)",
-                tickfont=dict(size=10),
-                titlefont=dict(size=12)
+            bargap=0.1,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
             )
         )
         
         return fig
 
-    # Callback pour la tendance annuelle
     @app.callback(
-        Output('annual-trend', 'figure'),
+        Output('raw-components', 'figure'),
         [Input('mass-slider', 'value'),
          Input('class-dropdown', 'value'),
           Input('fall-checklist', 'value'),
           Input('decade-slider', 'value')]
     )
     @error_handling_callback
-    def update_annual_trend(mass_range, classes, falls, decades):
+    def update_raw_components(mass_range, classes, falls, decades):
         df = meteorite_data.get_filtered_data(
             mass_range=mass_range,
             classification=classes,
@@ -1456,278 +1427,106 @@ def register_callbacks(app, data_path):
         )
         
         if df.empty:
-            # Retourner un graphique vide
-            return px.line(
-                pd.DataFrame({'month': range(1, 13), 'count': [0]*12}),
-                x='month', y='count',
-                title="Aucune donnée disponible"
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
             )
+            fig.update_layout(height=350)
+            return fig
+            
+        # Fonction pour extraire les composants principaux
+        def extract_components(class_name):
+            components = []
+            # Chondrites ordinaires
+            if class_name.startswith('H'):
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (20-25%)'])
+            if class_name.startswith('L'):
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (15-20%)'])
+            if class_name.startswith('LL'):
+                components.extend(['Silicates (Olivine/Pyroxène)', 'Alliage Fer-Nickel (10-15%)'])
+            
+            # Chondrites carbonées
+            if any(x in class_name for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                components.extend(['Matière organique', 'Minéraux hydratés', 'Carbone'])
+            
+            # Chondrites à enstatite
+            if class_name.startswith('E'):
+                components.append('Enstatite')
+            
+            # Achondrites HED
+            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                components.extend(['Pyroxène', 'Plagioclase'])
+            
+            # Météorites de fer
+            if 'Iron' in class_name:
+                components.extend(['Fer (90-95%)', 'Nickel (5-10%)'])
+            
+            # Métallo-rocheuses
+            if 'Pallasite' in class_name:
+                components.extend(['Olivine (50%)', 'Alliage Fer-Nickel (50%)'])
+            if 'Mesosiderite' in class_name:
+                components.extend(['Silicates', 'Alliage Fer-Nickel'])
+            
+            # Météorites martiennes (SNC)
+            if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
+                components.extend(['Pyroxène', 'Olivine', 'Plagioclase'])
+            
+            # Météorites lunaires
+            if 'Lunar' in class_name:
+                components.extend(['Anorthite', 'Pyroxène', 'Olivine'])
+            
+            if not components:
+                components.append('Composition inconnue')
+            return components
         
-        # Nettoyer les données et extraire le mois
-        df = df.dropna(subset=['year'])
+        # Extraire et compter tous les composants
+        all_components = []
+        for class_name in df['recclass']:
+            all_components.extend(extract_components(class_name))
         
-        # Créer une colonne pour le mois (si la date est disponible)
-        if 'date' in df.columns:
-            try:
-                df['month'] = pd.to_datetime(df['date']).dt.month
-                monthly_data = df.groupby('month').size().reset_index(name='count')
-                monthly_data['month'] = monthly_data['month'].apply(lambda m: {
-                    1: 'Jan', 2: 'Fév', 3: 'Mar', 4: 'Avr', 5: 'Mai', 6: 'Juin',
-                    7: 'Juil', 8: 'Août', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Déc'
-                }[m])
-            except:
-                # Si la conversion échoue, créer des données aléatoires
-                np.random.seed(42)  # Pour la reproductibilité
-                monthly_data = pd.DataFrame({
-                    'month': ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'],
-                    'count': np.random.randint(len(df)//24, len(df)//12, 12)
-                })
-        else:
-            # Si pas de colonne date, créer des données aléatoires
-            np.random.seed(42)  # Pour la reproductibilité
-            monthly_data = pd.DataFrame({
-                'month': ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'],
-                'count': np.random.randint(len(df)//24, len(df)//12, 12)
-            })
+        # Compter les composants
+        component_counts = pd.Series(all_components).value_counts()
         
         # Créer le graphique
-        fig = px.line(
-            monthly_data,
-            x='month', y='count',
-            markers=True,
-            color_discrete_sequence=['#0071e3'],
-            labels={'count': 'Nombre de météorites', 'month': 'Mois'},
-            title=f"Tendance annuelle des découvertes de météorites (n={len(df)})"
-        )
+        fig = go.Figure()
         
-        # Personnaliser la mise en page
+        # Ajouter les barres
+        fig.add_trace(go.Bar(
+            y=component_counts.index,
+            x=component_counts.values,
+            orientation='h',
+            marker_color='#0071e3',
+            text=component_counts.values,
+            textposition='auto',
+        ))
+        
+        # Mise en page
         fig.update_layout(
-            margin={"r":20,"t":40,"l":20,"b":40},
-            paper_bgcolor='white',
-            plot_bgcolor='white',
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            )
-        )
-        
-        return fig
-
-    # Callback pour l'évolution des masses au fil du temps
-    @app.callback(
-        Output('mass-time', 'figure'),
-        [Input('mass-slider', 'value'),
-         Input('class-dropdown', 'value'),
-          Input('fall-checklist', 'value'),
-          Input('decade-slider', 'value')]
-    )
-    @error_handling_callback
-    def update_mass_time(mass_range, classes, falls, decades):
-        df = meteorite_data.get_filtered_data(
-            mass_range=mass_range,
-            classification=classes,
-            fall_type=falls,
-            decade_range=decades
-        )
-        
-        if df.empty:
-            # Retourner un graphique vide
-            return px.scatter(
-                pd.DataFrame({'year': [], 'mass': []}),
-                x='year', y='mass',
-                title="Aucune donnée disponible"
-            )
-        
-        # Nettoyer les données
-        df = df.dropna(subset=['year', 'mass (g)'])
-        
-        # Calculer le log de la masse
-        df['log_mass'] = np.log10(df['mass (g)'])
-        
-        # Créer le nuage de points
-        fig = px.scatter(
-            df,
-            x='year',
-            y='log_mass',
-            color='recclass',
-            opacity=0.7,
-            labels={
-                'year': 'Année',
-                'log_mass': 'Log10(Masse en g)',
-                'recclass': 'Classe'
+            title={
+                'text': "Composants Principaux des Météorites",
+                'y':0.95,
+                'x':0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
             },
-            title=f"Évolution des masses au fil du temps (n={len(df)})"
-        )
-        
-        # Personnaliser la mise en page
-        fig.update_layout(
-            margin={"r":20,"t":40,"l":20,"b":40},
+            xaxis_title="Nombre de météorites",
+            yaxis_title="Composant",
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
             paper_bgcolor='white',
             plot_bgcolor='white',
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            )
+            xaxis=dict(
+                gridcolor='rgba(0,0,0,0.1)',
+                showgrid=True
+            ),
+            yaxis=dict(
+                automargin=True
+            ),
+            bargap=0.2
         )
         
         return fig
-
-    # Callback pour les prévisions
-    @app.callback(
-        Output('forecast', 'figure'),
-        [Input('mass-slider', 'value'),
-         Input('class-dropdown', 'value'),
-         Input('fall-checklist', 'value'),
-         Input('decade-slider', 'value')]
-    )
-    @error_handling_callback
-    def update_forecast(mass_range, classes, falls, decades):
-        df = meteorite_data.get_filtered_data(
-            mass_range=mass_range,
-            classification=classes,
-            fall_type=falls,
-            decade_range=decades
-        )
-        
-        # Valider et corriger le DataFrame pour éviter les erreurs de types
-        df = validate_dataframe_for_plotly(df, "update_forecast")
-        
-        # Vérifier si le DataFrame est vide
-        if df.empty:
-            fig = go.Figure()
-            fig.add_annotation(
-                text="Aucune donnée disponible pour générer une prévision",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5,
-                showarrow=False,
-                font=dict(size=14)
-            )
-            fig.update_layout(height=350)
-            return fig
-        
-        # S'assurer que l'année est traitée comme un nombre
-        df['year'] = pd.to_numeric(df['year'], errors='coerce').fillna(0).astype(int)
-        
-        # Filtrer les années valides
-        df = df[df['year'] > 1800]
-        
-        if df.empty:
-            fig = go.Figure()
-            fig.add_annotation(
-                text="Données insuffisantes pour générer une prévision",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5,
-                showarrow=False,
-                font=dict(size=14)
-            )
-            fig.update_layout(height=350)
-            return fig
-        
-        # Regrouper par année
-        yearly_counts = df.groupby('year').size().reset_index(name='count')
-        yearly_counts = yearly_counts.sort_values('year')
-        
-        # Calcul de la tendance (régression linéaire simple)
-        X = yearly_counts['year'].values.reshape(-1, 1)
-        y = yearly_counts['count'].values
-        
-        try:
-            from sklearn.linear_model import LinearRegression
-            model = LinearRegression()
-            model.fit(X, y)
-            
-            # Prédiction pour les 50 prochaines années
-            last_year = int(yearly_counts['year'].max())
-            future_years = np.array(range(last_year + 1, last_year + 51)).reshape(-1, 1)
-            predicted_counts = model.predict(future_years)
-            
-            # Créer un DataFrame pour les prédictions
-            future_df = pd.DataFrame({
-                'year': future_years.flatten(),
-                'count': predicted_counts,
-                'type': ['Prévision'] * len(future_years)
-            })
-            
-            # Ajouter une colonne type au DataFrame original
-            yearly_counts['type'] = 'Historique'
-            
-            # Combiner les données historiques et les prévisions
-            combined_df = pd.concat([yearly_counts, future_df], ignore_index=True)
-            
-            # S'assurer que toutes les colonnes sont du même type
-            combined_df['year'] = combined_df['year'].astype(int)
-            combined_df['count'] = combined_df['count'].astype(float)
-            combined_df['type'] = combined_df['type'].astype(str)
-            
-            # Créer le graphique avec go.Scatter au lieu de px.line
-            fig = go.Figure()
-            
-            # Données historiques
-            fig.add_trace(go.Scatter(
-                x=yearly_counts['year'],
-                y=yearly_counts['count'],
-                mode='markers+lines',
-                name='Données historiques',
-                marker=dict(color='#0071e3', size=8),
-                line=dict(color='#0071e3', width=2)
-            ))
-            
-            # Prévisions
-            fig.add_trace(go.Scatter(
-                x=future_df['year'],
-                y=future_df['count'],
-                mode='lines',
-                name='Prévisions',
-                line=dict(color='#ff9500', width=2, dash='dash')
-            ))
-            
-            fig.update_layout(
-                title="Prévision des Découvertes de Météorites",
-                xaxis_title="Année",
-                yaxis_title="Nombre de météorites",
-                height=350,
-                margin=dict(l=10, r=10, t=40, b=10),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                ),
-                paper_bgcolor='white',
-                plot_bgcolor='white'
-            )
-            
-            return fig
-            
-        except ImportError:
-            # Si sklearn n'est pas disponible
-            fig = go.Figure()
-            fig.add_annotation(
-                text="La bibliothèque scikit-learn est requise pour les prévisions",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5,
-                showarrow=False,
-                font=dict(size=14)
-            )
-            fig.update_layout(height=350)
-            return fig
-        except Exception as e:
-            # En cas d'erreur dans l'analyse
-            print(f"Erreur dans la génération de prévisions: {str(e)}")
-            fig = go.Figure()
-            fig.add_annotation(
-                text=f"Erreur lors de la génération des prévisions: {str(e)}",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5,
-                showarrow=False,
-                font=dict(size=14)
-            )
-            fig.update_layout(height=350)
-            return fig

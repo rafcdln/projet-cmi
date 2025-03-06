@@ -405,29 +405,27 @@ def create_layout():
                                     
                                     # Distribution des années
                                     html.Div([
-                                        html.H6([
-                                            'Distribution des années', 
-                                            html.I(className='fas fa-info-circle ms-2', id='year-distribution-info', style={'cursor': 'pointer'})
-                                        ], className='mt-3 mb-2'),
+                                        html.H5("Distribution des années", className="text-center mb-3"),
                                         dcc.Loading(
-                                            id="loading-year-distribution",
-                                            type="circle",
-                                            children=dcc.Graph(id='year-distribution', config={'displayModeBar': False})
+                                            dcc.Graph(
+                                                id='year-distribution',
+                                                config={'displayModeBar': False}
+                                            ),
+                                            type="circle"
                                         )
-                                    ], className="col-md-6"),
+                                    ], className="col-12 col-lg-6 mb-4"),
                                     
-                                    # Distribution géographique
+                                    # Distribution des composants bruts (remplace la distribution géographique)
                                     html.Div([
-                                        html.H6([
-                                            'Distribution géographique', 
-                                            html.I(className='fas fa-info-circle ms-2', id='geo-distribution-info', style={'cursor': 'pointer'})
-                                        ], className='mt-3 mb-2'),
+                                        html.H5("Composants bruts", className="text-center mb-3"),
                                         dcc.Loading(
-                                            id="loading-geo-distribution",
-                                            type="circle",
-                                            children=dcc.Graph(id='geo-distribution', config={'displayModeBar': False})
+                                            dcc.Graph(
+                                                id='raw-components',
+                                                config={'displayModeBar': False}
+                                            ),
+                                            type="circle"
                                         )
-                                    ], className="col-md-6")
+                                    ], className="col-12 col-lg-6 mb-4"),
                                 ], id="panel-distributions", className="row"),
                                 
                                 # Section Séries Chronologiques
