@@ -643,17 +643,6 @@ def create_layout():
                                         html.H6("Paramètres de prédiction", className="mb-2"),
                                         html.Div([
                                             html.Div([
-                                                html.Label("Année", className="form-label"),
-                                                dcc.Input(
-                                                    id='pred-year',
-                                                    type='number',
-                                                    value=2023,
-                                                    min=1800,
-                                                    max=2050,
-                                                    className="form-control"
-                                                ),
-                                            ], className="me-3 mb-2"),
-                                            html.Div([
                                                 html.Label("Type de chute", className="form-label"),
                                                 dcc.Dropdown(
                                                     id='pred-fall',
@@ -664,7 +653,9 @@ def create_layout():
                                                     value='Found',
                                                     clearable=False,
                                                     className="form-select"
-                                                )
+                                                ),
+                                                html.P("Utilisez le paramètre Horizon de prévision ci-dessous pour définir la période de prédiction", 
+                                                      className="text-muted small mt-2")
                                             ], className="mb-2"),
                                         ], className="d-flex flex-wrap mb-3"),
                                         
@@ -1031,7 +1022,7 @@ def create_prediction_tab():
             html.Div([
                 # Section des informations de localisation
                 html.Div([
-                    html.H3("Localisation"),
+                    html.H3("Localisation et paramètres"),
                     
                     html.Div([
                         html.Div([
@@ -1047,67 +1038,94 @@ def create_prediction_tab():
                     
                     html.Hr(),
                 
-                    # Paramètres de prédiction - déplacés en haut
+                    # Tous les paramètres regroupés en haut
                     html.Div([
-                        html.H3("Paramètres de prédiction"),
-                        
-                        # Rayon d'analyse
+                        # Paramètres de base dans une rangée
                         html.Div([
-                            html.Label([
-                                "Rayon d'analyse (°) ",
-                                html.Span(
-                                    html.I(className="fas fa-info-circle"),
-                                    id="tooltip-radius",
-                                    className="info-icon"
+                            # Rayon d'analyse
+                            html.Div([
+                                html.Label([
+                                    "Rayon d'analyse (°) ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-radius",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Définit la zone circulaire autour du point sélectionné qui sera analysée pour la prédiction. Un rayon plus grand prend en compte plus de données mais peut diluer les tendances locales.",
+                                    target="tooltip-radius",
+                                    placement="top"
+                                ),
+                                dcc.Slider(
+                                    id='analysis-radius',
+                                    min=0.5,
+                                    max=10,
+                                    step=0.5,
+                                    value=2.5,
+                                    marks={i: f'{i}°' for i in range(1, 11, 2)},
+                                    className="parameter-slider"
                                 )
-                            ]),
-                            dbc.Tooltip(
-                                "Définit la zone circulaire autour du point sélectionné qui sera analysée pour la prédiction. Un rayon plus grand prend en compte plus de données mais peut diluer les tendances locales.",
-                                target="tooltip-radius",
-                                placement="top"
-                            ),
-                            dcc.Slider(
-                                id='analysis-radius',
-                                min=0.5,
-                                max=10,
-                                step=0.5,
-                                value=2.5,
-                                marks={i: f'{i}°' for i in range(1, 11, 2)},
-                                className="parameter-slider"
-                            )
-                        ], className="prediction-parameter"),
-                        
-                        # Horizon de prévision
-                        html.Div([
-                            html.Label([
-                                "Horizon de prévision (années) ",
-                                html.Span(
-                                    html.I(className="fas fa-info-circle"),
-                                    id="tooltip-horizon",
-                                    className="info-icon"
-                                )
-                            ]),
-                            dbc.Tooltip(
-                                "Détermine combien d'années dans le futur la prédiction sera faite. Des horizons plus longs ont généralement une fiabilité plus faible.",
-                                target="tooltip-horizon",
-                                placement="top"
-                            ),
-                            dcc.Slider(
-                                id='forecast-horizon',
-                                min=1,
-                                max=50,
-                                step=1,
-                                value=10,
-                                marks={i: f'{i} ans' for i in range(0, 51, 10)},
-                                className="parameter-slider"
-                            )
-                        ], className="prediction-parameter"),
-                        
-                        # Paramètres avancés - déplacés en haut
-                        html.Div([
-                            html.Hr(),
-                            html.H4("Paramètres avancés"),
+                            ], className="parameter-container half-width"),
                             
+                            # Horizon de prévision
+                            html.Div([
+                                html.Label([
+                                    "Horizon de prévision (années) ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-horizon",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Détermine combien d'années dans le futur la prédiction sera faite. Des horizons plus longs ont généralement une fiabilité plus faible.",
+                                    target="tooltip-horizon",
+                                    placement="top"
+                                ),
+                                dcc.Slider(
+                                    id='forecast-horizon',
+                                    min=1,
+                                    max=50,
+                                    step=1,
+                                    value=10,
+                                    marks={i: f'{i} ans' for i in range(0, 51, 10)},
+                                    className="parameter-slider"
+                                )
+                            ], className="parameter-container half-width")
+                        ], className="parameters-row"),
+                        
+                        # Paramètres avancés dans une rangée
+                        html.Div([
+                            # Type de détection
+                            html.Div([
+                                html.Label([
+                                    "Type de détection ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-detection",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Choisissez entre la probabilité de trouver une météorite (Found) ou d'observer sa chute (Fell). Les météorites 'trouvées' ont généralement un âge inconnu.",
+                                    target="tooltip-detection",
+                                    placement="top"
+                                ),
+                                dcc.RadioItems(
+                                    id='detection-type',
+                                    options=[
+                                        {'label': 'Météorite trouvée (Found)', 'value': 'found'},
+                                        {'label': 'Chute observée (Fell)', 'value': 'fell'}
+                                    ],
+                                    value='found',
+                                    className="detection-radio"
+                                )
+                            ], className="parameter-container"),
+                        ], className="parameters-row"),
+                        
+                        # Deuxième rangée de paramètres avancés
+                        html.Div([
                             # Facteur environnemental
                             html.Div([
                                 html.Label([
@@ -1132,7 +1150,7 @@ def create_prediction_tab():
                                     marks={i/10: f'{i/10}' for i in range(0, 11, 2)},
                                     className="parameter-slider"
                                 )
-                            ], className="prediction-parameter"),
+                            ], className="parameter-container third-width"),
                             
                             # Poids historique
                             html.Div([
@@ -1158,7 +1176,7 @@ def create_prediction_tab():
                                     marks={i/10: f'{i/10}' for i in range(0, 11, 2)},
                                     className="parameter-slider"
                                 )
-                            ], className="prediction-parameter"),
+                            ], className="parameter-container third-width"),
                             
                             # Complexité du modèle
                             html.Div([
@@ -1184,17 +1202,17 @@ def create_prediction_tab():
                                     marks={i: str(i) for i in range(1, 11, 2)},
                                     className="parameter-slider"
                                 )
-                            ], className="prediction-parameter")
-                        ], className="advanced-parameters"),
-                        
-                        html.Hr(),
+                            ], className="parameter-container third-width")
+                        ], className="parameters-row"),
                         
                         # Bouton de calcul
-                        html.Button(
-                            "Calculer",
-                            id='calculate-prediction',
-                            className="calculate-button"
-                        )
+                        html.Div([
+                            html.Button(
+                                "Calculer",
+                                id='calculate-prediction',
+                                className="calculate-button"
+                            )
+                        ], className="button-container")
                     ], className="prediction-parameters"),
                 ], className="location-container"),
                 
@@ -1202,29 +1220,34 @@ def create_prediction_tab():
                 html.Div([
                     html.H3("Résultats de prédiction"),
                     
-                    # Indicateur de fiabilité modifié (comme un compteur de voiture)
+                    # Indice de confiance
                     html.Div([
-                        html.Label("Indice de fiabilité"),
+                        html.Label("Indice de confiance"),
                         daq.Gauge(
-                            id='reliability-gauge',
+                            id='confidence-gauge',
                             color={"gradient":True, "ranges":{"red":[0,30],"yellow":[30,70],"green":[70,100]}},
                             value=0,
                             min=0,
                             max=100,
                             showCurrentValue=True,
                             units="%",
-                            className="reliability-gauge"
+                            className="confidence-gauge"
                         ),
-                        html.Div(id="reliability-explanation", className="reliability-explanation")
-                    ], className="reliability-container"),
+                        html.Div(id="confidence-explanation", className="confidence-explanation")
+                    ], className="confidence-container"),
                     
                     html.Hr(),
                     
                     # Statistiques principales
                     html.Div([
                         html.Div([
-                            html.Label("Probabilité d'impact"),
-                            html.Div(id='impact-probability', className="stat-value")
+                            html.Label("Probabilité (Found)"),
+                            html.Div(id='found-probability', className="stat-value")
+                        ], className="stat-container"),
+                        
+                        html.Div([
+                            html.Label("Probabilité (Fell)"),
+                            html.Div(id='fell-probability', className="stat-value")
                         ], className="stat-container"),
                         
                         html.Div([
@@ -1252,6 +1275,47 @@ def create_prediction_tab():
                 className="time-chart"
             )
         ], className="time-prediction-container"),
+        
+        # Section d'analyse de zone (réaménagée avec graphiques)
+        html.Div([
+            html.H3("Analyse comparative de la zone"),
+            
+            # Rangée de petits graphiques
+            html.Div([
+                # Graphique 1: Comparaison avec région
+                html.Div([
+                    html.H4("Comparaison régionale"),
+                    dcc.Graph(id='region-comparison-chart', className="zone-chart")
+                ], className="zone-chart-container"),
+                
+                # Graphique 2: Distribution des masses
+                html.Div([
+                    html.H4("Distribution des masses"),
+                    dcc.Graph(id='zone-mass-distribution', className="zone-chart")
+                ], className="zone-chart-container"),
+                
+                # Graphique 3: Types de météorites
+                html.Div([
+                    html.H4("Types de météorites"),
+                    dcc.Graph(id='zone-type-distribution', className="zone-chart")
+                ], className="zone-chart-container")
+            ], className="zone-charts-row"),
+            
+            # Deuxième rangée de graphiques
+            html.Div([
+                # Graphique 4: Chronologie des impacts
+                html.Div([
+                    html.H4("Chronologie des impacts"),
+                    dcc.Graph(id='zone-timeline', className="zone-chart")
+                ], className="zone-chart-container wide"),
+                
+                # Graphique 5: Densité locale
+                html.Div([
+                    html.H4("Densité locale"),
+                    dcc.Graph(id='zone-density-map', className="zone-chart")
+                ], className="zone-chart-container wide")
+            ], className="zone-charts-row")
+        ], className="zone-analysis-container"),
         
         # Section des analyses supplémentaires
         html.Div([

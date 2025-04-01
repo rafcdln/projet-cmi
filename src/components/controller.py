@@ -16,6 +16,7 @@ from sklearn.preprocessing import StandardScaler
 import re
 import logging
 import os
+import math
 
 # Configuration du logging
 logging.basicConfig(
@@ -708,11 +709,11 @@ def register_callbacks(app, data_path):
         Output('prediction-output', 'children'),
         [Input('predict-button', 'n_clicks'),
          Input('selected-location', 'data')],
-        [State('pred-year', 'value'),
-         State('pred-fall', 'value'),
-         State('analysis-radius', 'value')]
+        [State('pred-fall', 'value'),
+         State('analysis-radius', 'value'),
+         State('forecast-horizon', 'value')]
     )
-    def make_prediction(n_clicks, location, year, fall, analysis_radius):
+    def make_prediction(n_clicks, location, fall, analysis_radius, horizon):
         debug_callback("Lancement de la prédiction")
         
         # Si aucun clic ou pas d'emplacement, retourner un message explicatif
@@ -761,15 +762,19 @@ def register_callbacks(app, data_path):
                 html.P("Veuillez cliquer sur la carte pour sélectionner un emplacement.")
             ], className="alert alert-warning")
             
-        if year is None or fall is None:
+        if fall is None or horizon is None:
             debug_callback("Erreur: Paramètres incomplets", level='error')
             return html.Div([
                 html.H5("Paramètres incomplets", className="text-warning"),
-                html.P("Veuillez spécifier l'année et le type de chute.")
+                html.P("Veuillez spécifier le type de chute et l'horizon de prévision.")
             ], className="alert alert-warning")
             
         try:
-            debug_callback(f"Prédiction pour: Lat {location['lat']:.4f}, Lon {location['lon']:.4f}, Année {year}, Type {fall}")
+            # Calculer l'année de prédiction à partir de l'horizon
+            current_year = datetime.now().year
+            prediction_year = current_year + horizon
+            
+            debug_callback(f"Prédiction pour: Lat {location['lat']:.4f}, Lon {location['lon']:.4f}, Horizon {horizon} ans (année {prediction_year}), Type {fall}")
             
             # Vérifier que le modèle est correctement initialisé
             if ml_model is None:
@@ -779,17 +784,17 @@ def register_callbacks(app, data_path):
             if not (-90 <= location['lat'] <= 90) or not (-180 <= location['lon'] <= 180):
                 raise ValueError("Coordonnées géographiques invalides.")
                 
-            if not (1800 <= year <= 2050):
-                raise ValueError(f"Année invalide: {year}. Doit être entre 1800 et 2050.")
+            if not (1 <= horizon <= 50):
+                raise ValueError(f"Horizon invalide: {horizon}. Doit être entre 1 et 50 ans.")
                 
             if fall not in ['Fell', 'Found']:
                 raise ValueError(f"Type de chute invalide: {fall}. Doit être 'Fell' ou 'Found'.")
             
-            # Effectuer la prédiction
+            # Effectuer la prédiction avec l'année calculée
             predicted_mass = ml_model.predict_mass(
                 location['lat'],
                 location['lon'],
-                year,
+                prediction_year,
                 fall
             )
             
@@ -817,18 +822,16 @@ def register_callbacks(app, data_path):
             # Facteur 3: Type de chute (Fell est plus rare mais plus précis)
             fall_factor = 1.2 if fall == 'Fell' else 1.0
             
-            # Facteur 4: Année (les prédictions pour des années plus éloignées sont moins fiables)
-            current_year = datetime.now().year
-            year_diff = abs(year - current_year)
-            time_factor = max(0.5, min(1.0, 1.0 - (year_diff / 100.0)))  # Facteur décroissant avec le temps
+            # Facteur 4: Horizon (les prédictions pour un horizon plus long sont moins fiables, mais plus probables)
+            time_factor = max(0.5, min(1.0, horizon / 50.0))  # Plus l'horizon est long, plus la probabilité augmente
             
             # Calculer la probabilité finale (ajuster selon vos besoins)
             base_probability = 0.01  # Probabilité de base très faible
             impact_probability = base_probability * proximity_factor * density_factor * fall_factor * time_factor
-            impact_probability = min(0.95, impact_probability)  # Plafonner à 95% max
+            impact_probability = min(0.98, impact_probability * horizon / 10)  # Augmente avec l'horizon, plafonné à 98%
             
             # Calculer l'indice de confiance (0-100)
-            confidence_score = int((proximity_factor * 0.4 + density_factor * 0.4 + time_factor * 0.2) * 100)
+            confidence_score = int((proximity_factor * 0.4 + density_factor * 0.4 + (1 - time_factor) * 0.2) * 100)
             confidence_class = "danger" if confidence_score < 30 else "warning" if confidence_score < 70 else "success"
             
             # Créer la visualisation de probabilité avec une jauge
@@ -837,10 +840,10 @@ def register_callbacks(app, data_path):
                     html.Div(className="gauge-background"),
                     html.Div(className="gauge-fill", style={"width": f"{impact_probability * 100}%"}),
                     html.Div(className="gauge-cover", children=[
-                        html.Span(f"{impact_probability:.2%}", className="gauge-value")
+                        html.Span(f"{impact_probability:.2%}", className="gauge-value fw-bold text-center d-block display-6")
                     ])
                 ], className="gauge-container")
-            ], className="mt-3 mb-4")
+            ], className="mt-3 mb-4 text-center")
             
             # Créer les facteurs explicatifs de la prédiction
             factors_explanation = html.Div([
@@ -922,8 +925,8 @@ def register_callbacks(app, data_path):
                             f"Lat {location['lat']:.4f}, Lon {location['lon']:.4f}"
                         ]),
                         html.Li([
-                            html.Span("Année: ", className="fw-bold"),
-                            f"{year}"
+                            html.Span("Horizon: ", className="fw-bold"),
+                            f"{horizon} ans (jusqu'à {prediction_year})"
                         ]),
                         html.Li([
                             html.Span("Type: ", className="fw-bold"),
@@ -956,66 +959,456 @@ def register_callbacks(app, data_path):
     @app.callback(
         Output('zone-analysis-output', 'children'),
         [Input('analyze-zone-button', 'n_clicks')],
-        [State('selected-location', 'data')]
+        [State('selected-location', 'data'),
+         State('analysis-radius', 'value')]
     )
-    def analyze_zone(n_clicks, location):
+    def analyze_zone(n_clicks, location, analysis_radius):
         if n_clicks is None or location is None:
             return ""
         
-        # Analyse d'une zone de 2.5 degrés autour du point sélectionné
+        # Analyse d'une zone autour du point sélectionné
         lat, lon = location['lat'], location['lon']
         df = meteorite_data.get_filtered_data()
         
+        # Filtrer par rayon manuellement
         zone_data = df[
-            (df['reclat'].between(lat - 2.5, lat + 2.5)) &
-            (df['reclong'].between(lon - 2.5, lon + 2.5))
+            (df['reclat'].between(lat - analysis_radius, lat + analysis_radius)) &
+            (df['reclong'].between(lon - analysis_radius, lon + analysis_radius))
+        ]
+        
+        # Filtrer pour le rayon régional (3x plus grand)
+        regional_data = df[
+            (df['reclat'].between(lat - analysis_radius*3, lat + analysis_radius*3)) &
+            (df['reclong'].between(lon - analysis_radius*3, lon + analysis_radius*3))
         ]
         
         if len(zone_data) == 0:
             return html.Div([
                 html.H5("Aucune météorite connue", className="text-info mb-3"),
                 html.P("Aucune météorite n'a été enregistrée dans cette zone."),
-                html.P([
-                    "Coordonnées analysées: ",
-                    html.Br(),
-                    f"Latitude: {lat:.4f} ± 2.5°",
-                    html.Br(),
-                    f"Longitude: {lon:.4f} ± 2.5°"
-                ], className="text-muted small")
-            ], className="alert alert-light border")
+                html.Div([
+                    html.Div([
+                        html.I(className="fas fa-map-marker-alt me-2 text-danger"),
+                        f"Coordonnées: Lat {lat:.4f}, Lon {lon:.4f}"
+                    ], className="mb-2"),
+                    html.Div([
+                        html.I(className="fas fa-ruler me-2 text-primary"),
+                        f"Rayon d'analyse: {analysis_radius}°"
+                    ], className="mb-2")
+                ], className="alert alert-light p-3 rounded")
+            ], className="alert alert-light border shadow-sm")
         
         # Calculer des statistiques avancées
-        stats = {
-            'Nombre de météorites': len(zone_data),
-            'Masse totale': f"{zone_data['mass (g)'].sum():.1f} g",
-            'Masse moyenne': f"{zone_data['mass (g)'].mean():.2f} g",
-            'Masse médiane': f"{zone_data['mass (g)'].median():.2f} g",
-            'Masse minimale': f"{zone_data['mass (g)'].min():.2f} g",
-            'Masse maximale': f"{zone_data['mass (g)'].max():.2f} g",
-            'Période': f"{int(zone_data['year'].min())} - {int(zone_data['year'].max())}",
-            'Classes principales': ", ".join(zone_data['recclass'].value_counts().nlargest(3).index.tolist())
-        }
-        
-        return html.Div([
-            html.H5("Analyse de la Zone", className="text-info mb-3"),
-            html.P(f"Analyse d'une zone de 2.5° autour de ({lat:.4f}, {lon:.4f})"),
+        try:
+            stats = {
+                'Nombre de météorites': len(zone_data),
+                'Masse totale': f"{zone_data['mass (g)'].sum():.1f} g",
+                'Masse moyenne': f"{zone_data['mass (g)'].mean():.2f} g",
+                'Masse médiane': f"{zone_data['mass (g)'].median():.2f} g"
+            }
             
-            html.Table([
-                html.Thead(
-                    html.Tr([
-                        html.Th("Caractéristique", className="text-start"),
-                        html.Th("Valeur", className="text-end")
-                    ])
-                ),
-                html.Tbody([
-                    html.Tr([
-                        html.Td(k, className="text-start fw-bold"),
-                        html.Td(v, className="text-end")
-                    ]) for k, v in stats.items()
+            # Statistiques temporelles
+            if 'year' in zone_data.columns and not zone_data['year'].isna().all():
+                stats['Période'] = f"{int(zone_data['year'].min())} - {int(zone_data['year'].max())}"
+                stats['Âge moyen'] = f"{int(datetime.now().year - zone_data['year'].mean())} ans"
+            
+            # Statistiques de classification
+            if 'recclass' in zone_data.columns and len(zone_data) >= 3:
+                class_counts = zone_data['recclass'].value_counts()
+                main_classes = class_counts.nlargest(3).index.tolist()
+                stats['Classes principales'] = ", ".join(main_classes)
+                stats['Classe dominante'] = f"{main_classes[0]} ({(class_counts[main_classes[0]]/len(zone_data)*100):.1f}%)" if main_classes else "N/A"
+            
+            # Statistiques régionales
+            stats['Concentration locale'] = f"{len(zone_data) / (math.pi * analysis_radius**2):.2f} météorites/deg²"
+            stats['% des météorites régionales'] = f"{len(zone_data) / len(regional_data) * 100:.1f}%" if len(regional_data) > 0 else "N/A"
+            
+            # Fonction temporaire pour calculer les figures (remplace les appels à des fonctions qui utilisent get_meteorites_in_radius)
+            def create_empty_figure_with_message(message):
+                fig = go.Figure()
+                fig.add_annotation(
+                    text=message,
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5,
+                    showarrow=False,
+                    font=dict(size=16)
+                )
+                fig.update_layout(
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+                )
+                return fig
+                
+            # Créer des figures simplifiées pour les visualisations
+            def create_comparison_chart():
+                # Compter le nombre de météorites
+                local_count = len(zone_data)
+                regional_count = len(regional_data)
+                global_count = len(df)
+                
+                # Calculer la densité (nombre/surface)
+                local_area = math.pi * (analysis_radius ** 2)
+                regional_area = math.pi * ((analysis_radius * 3) ** 2)
+                global_area = 4 * math.pi * 6371 ** 2  # Surface terre en km²
+                
+                local_density = local_count / local_area if local_area > 0 else 0
+                regional_density = regional_count / regional_area if regional_area > 0 else 0
+                global_density = global_count / global_area if global_area > 0 else 0
+                
+                # Normaliser les densités (pour l'affichage)
+                max_density = max(local_density, regional_density, global_density)
+                if max_density > 0:
+                    local_density_norm = local_density / max_density
+                    regional_density_norm = regional_density / max_density
+                    global_density_norm = global_density / max_density
+                else:
+                    local_density_norm = regional_density_norm = global_density_norm = 0
+                
+                # Créer le graphique
+                fig = go.Figure()
+                
+                # Ajouter les barres
+                fig.add_trace(go.Bar(
+                    x=['Zone locale', 'Région', 'Global'],
+                    y=[local_density_norm, regional_density_norm, global_density_norm],
+                    text=[f"{local_count} météorites", 
+                          f"{regional_count} météorites", 
+                          f"{global_count} météorites"],
+                    textposition='auto',
+                    marker_color=['#0077b6', '#00b4d8', '#90e0ef'],
+                    hoverinfo='text'
+                ))
+                
+                # Mise en page
+                fig.update_layout(
+                    title="Densité comparative",
+                    yaxis_title="Densité relative",
+                    showlegend=False,
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    height=180
+                )
+                
+                return fig
+            
+            def create_type_distribution():
+                if len(zone_data) < 5 or 'recclass' not in zone_data.columns:
+                    return create_empty_figure_with_message("Données insuffisantes")
+                    
+                # Compter les occurrences des classes
+                classes = zone_data['recclass'].dropna()
+                if len(classes) < 3:
+                    return create_empty_figure_with_message("Données de classe insuffisantes")
+                    
+                class_counts = classes.value_counts().nlargest(5)
+                
+                # Créer le graphique
+                fig = go.Figure()
+                
+                # Ajouter le camembert
+                fig.add_trace(go.Pie(
+                    labels=class_counts.index,
+                    values=class_counts.values,
+                    hole=0.4,
+                    marker=dict(
+                        colors=px.colors.qualitative.Pastel
+                    ),
+                    textinfo='percent',
+                    hoverinfo='label+percent+value'
+                ))
+                
+                # Mise en page
+                fig.update_layout(
+                    title="Types de météorites",
+                    showlegend=False,
+                    margin=dict(l=0, r=0, t=40, b=0),
+                    height=180
+                )
+                
+                return fig
+            
+            def create_mass_distribution():
+                if len(zone_data) < 5 or 'mass (g)' not in zone_data.columns:
+                    return create_empty_figure_with_message("Données insuffisantes")
+                    
+                # Extraire les masses
+                masses = zone_data['mass (g)'].dropna()
+                if len(masses) < 5:
+                    return create_empty_figure_with_message("Données de masse insuffisantes")
+                    
+                # Créer le graphique
+                fig = go.Figure()
+                
+                # Ajouter l'histogramme des masses (échelle log)
+                fig.add_trace(go.Histogram(
+                    x=np.log10(masses[masses > 0]),
+                    nbinsx=10,
+                    marker_color='#0077b6',
+                    opacity=0.7
+                ))
+                
+                # Mise en page
+                fig.update_layout(
+                    title="Distribution des masses",
+                    xaxis_title="Log10(Masse en g)",
+                    yaxis_title="Nombre",
+                    showlegend=False,
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    height=180
+                )
+                
+                return fig
+            
+            def create_timeline():
+                if len(zone_data) < 5 or 'year' not in zone_data.columns:
+                    return create_empty_figure_with_message("Données insuffisantes")
+                    
+                # Extraire les années
+                years = zone_data['year'].dropna()
+                if len(years) < 5:
+                    return create_empty_figure_with_message("Données temporelles insuffisantes")
+                    
+                # Grouper par décennie
+                zone_data['decade'] = (zone_data['year'] // 10) * 10
+                decade_counts = zone_data.groupby('decade').size().reset_index(name='count')
+                
+                # Créer le graphique
+                fig = go.Figure()
+                
+                # Ajouter la courbe d'évolution
+                fig.add_trace(go.Scatter(
+                    x=decade_counts['decade'],
+                    y=decade_counts['count'],
+                    mode='lines+markers',
+                    line=dict(color='#0077b6', width=2),
+                    marker=dict(size=8, color='#0077b6'),
+                    fill='tozeroy',
+                    fillcolor='rgba(0, 119, 182, 0.2)'
+                ))
+                
+                # Mise en page
+                fig.update_layout(
+                    title="Chronologie des découvertes",
+                    xaxis_title="Décennie",
+                    yaxis_title="Nombre",
+                    showlegend=False,
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    height=180
+                )
+                
+                return fig
+            
+            def create_density_map():
+                # Créer le graphique de densité
+                fig = go.Figure()
+                
+                # Ajouter la carte de densité
+                fig.add_trace(go.Densitymapbox(
+                    lat=zone_data['reclat'],
+                    lon=zone_data['reclong'],
+                    z=[1] * len(zone_data),
+                    radius=20,
+                    colorscale='Viridis',
+                    showscale=False
+                ))
+                
+                # Ajouter un marqueur pour le point sélectionné
+                fig.add_trace(go.Scattermapbox(
+                    lat=[lat],
+                    lon=[lon],
+                    mode='markers',
+                    marker=dict(
+                        size=10,
+                        color='red'
+                    ),
+                    showlegend=False
+                ))
+                
+                # Mise en page
+                fig.update_layout(
+                    mapbox=dict(
+                        style='carto-positron',
+                        center=dict(lat=lat, lon=lon),
+                        zoom=4
+                    ),
+                    margin=dict(l=0, r=0, t=40, b=0),
+                    height=240
+                )
+                
+                return fig
+            
+            # Créer le layout avec cartes et graphiques
+            return html.Div([
+                # Titre et introduction
+                html.Div([
+                    html.H4([
+                        html.I(className="fas fa-search-location me-2"), 
+                        "Analyse détaillée de la zone"
+                    ], className="mb-3 text-primary"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.I(className="fas fa-map-marker-alt me-2 text-danger"),
+                            f"Coordonnées: Lat {lat:.4f}, Lon {lon:.4f}"
+                        ], className="col-md-6"),
+                        html.Div([
+                            html.I(className="fas fa-ruler me-2 text-primary"),
+                            f"Rayon d'analyse: {analysis_radius}°"
+                        ], className="col-md-6"),
+                    ], className="row mb-3 small text-muted"),
+                    
+                    # Carte et statistiques principales
+                    html.Div([
+                        # Colonne de gauche: Carte de densité
+                        html.Div([
+                            html.H6("Densité de météorites", className="text-center mb-2"),
+                            dcc.Loading(
+                                id="loading-density-map",
+                                type="circle",
+                                children=dcc.Graph(
+                                    id='density-map-preview',
+                                    figure=create_density_map(),
+                                    config={'displayModeBar': False},
+                                    style={'height': '240px'}
+                                )
+                            )
+                        ], className="col-md-6"),
+                        
+                        # Colonne de droite: Statistiques clés
+                        html.Div([
+                            html.H6("Statistiques clés", className="mb-2"),
+                            html.Div([
+                                html.Div([
+                                    html.Div([
+                                        html.H2(stats['Nombre de météorites'], className="m-0 text-primary")
+                                    ], className="card-body text-center"),
+                                    html.Div("Météorites trouvées", className="card-footer text-center text-muted")
+                                ], className="card mb-2"),
+                                
+                                html.Div([
+                                    html.Div([
+                                        html.Div([
+                                            html.Span("Masse totale:", className="fw-bold me-2"),
+                                            html.Span(stats['Masse totale'])
+                                        ], className="d-flex justify-content-between mb-1"),
+                                        html.Div([
+                                            html.Span("Masse moyenne:", className="fw-bold me-2"),
+                                            html.Span(stats['Masse moyenne'])
+                                        ], className="d-flex justify-content-between mb-1"),
+                                        html.Div([
+                                            html.Span("Masse médiane:", className="fw-bold me-2"),
+                                            html.Span(stats['Masse médiane'])
+                                        ], className="d-flex justify-content-between mb-1"),
+                                        html.Div([
+                                            html.Span("Période:", className="fw-bold me-2"),
+                                            html.Span(stats.get('Période', 'N/A'))
+                                        ], className="d-flex justify-content-between mb-1"),
+                                        html.Div([
+                                            html.Span("Classe dominante:", className="fw-bold me-2"),
+                                            html.Span(stats.get('Classe dominante', 'N/A'))
+                                        ], className="d-flex justify-content-between mb-1")
+                                    ], className="p-2")
+                                ], className="card stats-card")
+                            ])
+                        ], className="col-md-6")
+                    ], className="row mb-4"),
+                    
+                    # Graphiques de comparaison
+                    html.H6("Analyses comparatives", className="mb-3"),
+                    
+                    html.Div([
+                        # Ligne 1: Comparaison et distribution des types
+                        html.Div([
+                            # Comparaison régionale
+                            html.Div([
+                                html.H6("Comparaison régionale", className="text-center small mb-1"),
+                                dcc.Loading(
+                                    id="loading-region-comp",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='region-comp-preview',
+                                        figure=create_comparison_chart(),
+                                        config={'displayModeBar': False},
+                                        style={'height': '180px'}
+                                    )
+                                )
+                            ], className="col-md-6 mb-3"),
+                            
+                            # Distribution des types
+                            html.Div([
+                                html.H6("Types de météorites", className="text-center small mb-1"),
+                                dcc.Loading(
+                                    id="loading-type-dist",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='type-dist-preview',
+                                        figure=create_type_distribution(),
+                                        config={'displayModeBar': False},
+                                        style={'height': '180px'}
+                                    )
+                                )
+                            ], className="col-md-6 mb-3")
+                        ], className="row mb-2"),
+                        
+                        # Ligne 2: Distribution des masses et chronologie
+                        html.Div([
+                            # Distribution des masses
+                            html.Div([
+                                html.H6("Distribution des masses", className="text-center small mb-1"),
+                                dcc.Loading(
+                                    id="loading-mass-dist",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='mass-dist-preview',
+                                        figure=create_mass_distribution(),
+                                        config={'displayModeBar': False},
+                                        style={'height': '180px'}
+                                    )
+                                )
+                            ], className="col-md-6 mb-3"),
+                            
+                            # Chronologie des découvertes
+                            html.Div([
+                                html.H6("Chronologie des découvertes", className="text-center small mb-1"),
+                                dcc.Loading(
+                                    id="loading-timeline",
+                                    type="circle",
+                                    children=dcc.Graph(
+                                        id='timeline-preview',
+                                        figure=create_timeline(),
+                                        config={'displayModeBar': False},
+                                        style={'height': '180px'}
+                                    )
+                                )
+                            ], className="col-md-6 mb-3")
+                        ], className="row")
+                    ]),
+                    
+                    # Observations et conclusions
+                    html.Div([
+                        html.H6("Observations", className="mb-2"),
+                        html.Ul([
+                            html.Li(f"La zone contient {len(zone_data)} météorite{'s' if len(zone_data) > 1 else ''} sur {len(df)} dans la base de données ({len(zone_data)/len(df)*100:.2f}%)."),
+                            html.Li(f"La concentration locale est {float(stats['Concentration locale'].split()[0]):.2f} fois " + 
+                                   ("supérieure" if float(stats['Concentration locale'].split()[0]) > 0.1 else "inférieure") + 
+                                   " à la moyenne mondiale."),
+                            html.Li(f"Cette zone représente {stats['% des météorites régionales']} des météorites de la région environnante (rayon de {analysis_radius*3}°)."),
+                            html.Li(f"La plupart des météorites trouvées sont de type {stats.get('Classe dominante', 'inconnu').split(' ')[0]}.")
+                        ], className="text-muted small")
+                    ], className="mt-3 p-3 bg-light rounded")
                 ])
-            ], className="table table-sm table-hover")
+            ], className="p-3 border rounded shadow-sm")
             
-        ], className="alert alert-light border")
+        except Exception as e:
+            import traceback
+            trace = traceback.format_exc()
+            return html.Div([
+                html.H5("Erreur lors de l'analyse", className="text-danger"),
+                html.P(f"Une erreur s'est produite: {str(e)}"),
+                html.Details([
+                    html.Summary("Détails techniques (cliquez pour développer)"),
+                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
+                ], className="mt-2")
+            ], className="alert alert-danger")
     
     @app.callback(
         Output('correlation-heatmap', 'figure'),
@@ -2329,78 +2722,487 @@ def register_callbacks(app, data_path):
             ], className="alert alert-danger")
             
             return error_msg, ""
-    
-    @app.callback(
-        [Output('spatial-prediction-output', 'children'),
-         Output('spatial-heatmap', 'children')],
-        [Input('btn-spatial-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('analysis-radius', 'value'),
-         State('detection-sensitivity', 'value')]
-    )
-    def update_spatial_prediction(n_clicks, location, radius, sensitivity):
-        if n_clicks is None or location is None:
-            return "", ""
         
+    # Fonction pour calculer le score de confiance
+    def calculate_confidence_score(location, horizon, radius, complexity, env_factor, hist_weight):
         try:
-            # Extraire les paramètres
+            # Extraire coordonnées
             lat, lon = location['lat'], location['lon']
             
-            # Préparer les données pour la heatmap
-            # Dans un cas réel, vous utiliseriez un modèle géospatial
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
             
-            # Créer une grille pour la carte de chaleur
-            lat_range = np.linspace(lat - radius, lat + radius, 50)
-            lon_range = np.linspace(lon - radius, lon + radius, 50)
+            # Nombre de météorites trouvées dans la zone
+            nearby_count = len(nearby_data)
+            data_factor = min(1.0, nearby_count / 50)  # Saturation à 50 météorites
             
-            # Créer une grille 2D pour les latitudes et longitudes
-            lat_grid, lon_grid = np.meshgrid(lat_range, lon_range)
+            # Calcul de base
+            base_score = 50 + (data_factor * 30)  # 50-80 selon la densité des données
             
-            # Aplatir pour les visualisations
-            lats_flat = lat_grid.flatten()
-            lons_flat = lon_grid.flatten()
+            # Pénalité pour l'horizon de prévision (plus long = moins confiant)
+            horizon_penalty = min(40, horizon * 0.8)
             
-            # Récupérer les données historiques
-            df = meteorite_data.get_filtered_data()
+            # Analyse de la dispersion temporelle
+            if len(nearby_data) > 5 and 'year' in nearby_data.columns:
+                years = nearby_data['year'].dropna()
+                if len(years) > 5:
+                    year_std = years.std()
+                    year_range = years.max() - years.min()
+                    
+                    # Meilleures données avec une bonne répartition temporelle
+                    if year_range > 50 and year_std > 15:
+                        time_bonus = 15
+                    elif year_range > 20:
+                        time_bonus = 10
+                    else:
+                        time_bonus = 0
+                else:
+                    time_bonus = 0
+            else:
+                time_bonus = 0
             
-            # Calculer la probabilité basée sur la distance aux météorites connues
-            probabilities = []
-            
-            for grid_lat, grid_lon in zip(lats_flat, lons_flat):
-                # Calculer la distance à toutes les météorites connues
-                distances = np.sqrt(((df['reclat'] - grid_lat) ** 2) + ((df['reclong'] - grid_lon) ** 2))
+            # Analyse de la répartition spatiale
+            if len(nearby_data) > 10:
+                lat_std = nearby_data['reclat'].std()
+                lon_std = nearby_data['reclong'].std()
                 
-                # Facteur d'influence ajusté par la sensibilité (0-100)
-                influence_factor = (sensitivity / 100) * 5  # 0.05 à 5
-                
-                # Calculer la probabilité en fonction des distances aux météorites les plus proches
-                # Plus les météorites connues sont proches, plus la probabilité est élevée
-                weights = np.exp(-distances * influence_factor)
-                probability = min(1.0, np.sum(weights) / 50)  # normaliser à 1.0 max
-                
-                probabilities.append(probability)
+                # Bonne répartition spatiale = plus confiant
+                spatial_dispersion = (lat_std + lon_std) / 2
+                if spatial_dispersion > 0.5:
+                    spatial_bonus = 10
+                elif spatial_dispersion > 0.2:
+                    spatial_bonus = 5
+                else:
+                    spatial_bonus = 0
+            else:
+                spatial_bonus = 0
             
-            # Créer un DataFrame pour la visualisation
-            heatmap_df = pd.DataFrame({
-                'lat': lats_flat,
-                'lon': lons_flat,
-                'probability': probabilities
-            })
+            # Vérifier l'homogénéité des classifications
+            if len(nearby_data) > 5 and 'recclass' in nearby_data.columns:
+                class_counts = nearby_data['recclass'].value_counts()
+                top_class_ratio = class_counts.iloc[0] / len(nearby_data) if len(class_counts) > 0 else 0
+                
+                # Si une classe domine fortement = plus confiant dans les prédictions
+                if top_class_ratio > 0.7:
+                    class_bonus = 10
+                elif top_class_ratio > 0.5:
+                    class_bonus = 5
+                else:
+                    class_bonus = 0
+            else:
+                class_bonus = 0
             
-            # Créer la carte de densité
-            fig = px.density_mapbox(
-                heatmap_df, 
-                lat='lat', 
-                lon='lon', 
-                z='probability',
-                radius=20,
-                zoom=8,
-                center=dict(lat=lat, lon=lon),
-                mapbox_style='carto-positron',
-                opacity=0.8,
-                labels={'probability': 'Probabilité'},
-                range_color=[0, 1]
+            # Calculer le score final avec tous les facteurs
+            score = base_score - horizon_penalty + time_bonus + spatial_bonus + class_bonus
+            
+            # Ajuster avec les facteurs utilisateur
+            complexity_factor = 1 - (abs(complexity - 5) / 10)  # Optimum à 5, se dégrade en s'éloignant
+            score = score * (0.8 + (complexity_factor * 0.3))
+            
+            # Facteurs environnementaux et historiques
+            score = score * (0.9 + (env_factor * 0.2))
+            score = score * (0.9 + (hist_weight * 0.2))
+            
+            # Limiter le score entre 0 et 100
+            return max(0, min(100, score))
+            
+        except Exception as e:
+            print(f"Erreur dans le calcul du score de confiance: {str(e)}")
+            return 30  # Valeur par défaut en cas d'erreur
+        
+    # Fonction pour générer l'explication de la confiance
+    def get_confidence_explanation(score, horizon, radius, complexity):
+        if score < 30:
+            if horizon > 30:
+                return "Confiance faible : l'horizon de prévision est très éloigné et les données historiques locales sont insuffisantes ou mal réparties."
+            elif radius < 2:
+                return "Confiance faible : le rayon d'analyse est petit et peu de météorites ont été trouvées dans cette zone."
+            else:
+                return "Confiance faible : les données historiques sont limitées ou les paramètres du modèle ne sont pas optimaux pour cette zone."
+        elif score < 70:
+            if horizon > 15:
+                return "Confiance moyenne : l'horizon de prévision à long terme réduit la précision, mais la zone dispose de données historiques acceptables."
+            elif complexity > 8 or complexity < 3:
+                return "Confiance moyenne : la complexité du modèle n'est pas optimale. Un modèle trop simple ou trop complexe peut affecter la qualité des prédictions."
+            else:
+                return "Confiance moyenne : la zone dispose de données historiques, mais leur répartition spatiale ou temporelle n'est pas idéale."
+        else:
+            return "Confiance élevée : la zone dispose de données historiques bien réparties et les paramètres du modèle sont optimaux pour cette analyse."
+            
+    # Callback pour mettre à jour les probabilités (found/fell) et autres statistiques
+    @app.callback(
+        [Output('found-probability', 'children'),
+         Output('fell-probability', 'children'),
+         Output('estimated-mass', 'children'),
+         Output('probable-class', 'children')],
+        [Input('calculate-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('forecast-horizon', 'value'),
+         State('detection-type', 'value'),
+         State('analysis-radius', 'value'),
+         State('environmental-factor', 'value'),
+         State('historical-weight', 'value'),
+         State('model-complexity', 'value')]
+    )
+    def update_prediction_results(n_clicks, location, horizon, detection_type, radius, env_factor, hist_weight, complexity):
+        if not n_clicks or not location:
+            return "N/A", "N/A", "N/A", "N/A"
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            # Calculer les probabilités de base selon les données historiques
+            if len(nearby_data) < 5:
+                # Pas assez de données pour une prédiction fiable
+                base_prob_found = 0.05
+                base_prob_fell = 0.02
+            else:
+                # Compter les found/fell dans les données
+                if 'fall' in nearby_data.columns:
+                    found_count = len(nearby_data[nearby_data['fall'] == 'Found'])
+                    fell_count = len(nearby_data[nearby_data['fall'] == 'Fell'])
+                    total_count = len(nearby_data)
+                    
+                    # Calculer les ratios
+                    found_ratio = found_count / total_count
+                    fell_ratio = fell_count / total_count
+                    
+                    # Ajuster selon la densité locale par rapport à la moyenne mondiale
+                    global_density = len(meteorite_data.data) / (180 * 360)  # Approx. densité globale
+                    local_density = total_count / (math.pi * radius * radius)
+                    
+                    density_factor = min(3.0, local_density / (global_density + 0.0001))
+                    
+                    # Probabilités de base
+                    base_prob_found = min(0.95, found_ratio * density_factor * 0.7)
+                    base_prob_fell = min(0.5, fell_ratio * density_factor * 0.3)
+                else:
+                    # Estimations par défaut si les données ne contiennent pas fall/found
+                    base_prob_found = 0.15
+                    base_prob_fell = 0.05
+            
+            # Ajuster selon l'horizon temporel
+            time_factor = min(1.5, 1 + (horizon / 100))
+            prob_found = min(0.99, base_prob_found * time_factor)
+            prob_fell = min(0.75, base_prob_fell * time_factor)
+            
+            # Ajuster selon les facteurs environnementaux et historiques
+            prob_found = prob_found * (0.7 + env_factor * 0.6)
+            prob_fell = prob_fell * (0.7 + env_factor * 0.6)
+            
+            prob_found = prob_found * (0.7 + hist_weight * 0.6)
+            prob_fell = prob_fell * (0.7 + hist_weight * 0.6)
+            
+            # Estimer la masse
+            if len(nearby_data) > 5 and 'mass (g)' in nearby_data.columns:
+                masses = nearby_data['mass (g)'].dropna()
+                if len(masses) > 0:
+                    # Utiliser la moyenne géométrique qui est mieux adaptée aux données de masse
+                    log_masses = np.log10(masses[masses > 0])
+                    mean_log_mass = log_masses.mean()
+                    estimated_mass = 10 ** mean_log_mass
+                    mass_display = f"{estimated_mass:.1f} g"
+                else:
+                    mass_display = "Indéterminée"
+            else:
+                mass_display = "Indéterminée"
+            
+            # Estimer la classification la plus probable
+            if len(nearby_data) > 5 and 'recclass' in nearby_data.columns:
+                classes = nearby_data['recclass'].dropna()
+                if len(classes) > 0:
+                    class_counts = classes.value_counts()
+                    probable_class = class_counts.index[0] if len(class_counts) > 0 else "Inconnue"
+                else:
+                    probable_class = "Inconnue"
+            else:
+                probable_class = "Inconnue"
+            
+            # Formatter les résultats
+            found_display = f"{prob_found:.1%}"
+            fell_display = f"{prob_fell:.1%}"
+            
+            return found_display, fell_display, mass_display, probable_class
+            
+        except Exception as e:
+            print(f"Erreur dans update_prediction_results: {str(e)}")
+            return "Erreur", "Erreur", "Erreur", "Erreur"
+            
+    # Callbacks pour les graphiques d'analyse de zone
+    @app.callback(
+        Output('region-comparison-chart', 'figure'),
+        [Input('selected-location', 'data'),
+         Input('analysis-radius', 'value')]
+    )
+    def update_region_comparison(location, radius):
+        if not location:
+            return empty_figure_with_message("Sélectionnez un point sur la carte")
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            # Obtenir les données régionales (rayon plus grand)
+            regional_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius * 3)
+            
+            # Obtenir les données globales
+            global_data = meteorite_data.data
+            
+            # Compter le nombre de météorites
+            local_count = len(nearby_data)
+            regional_count = len(regional_data)
+            global_count = len(global_data)
+            
+            # Calculer la densité (nombre/surface)
+            local_area = math.pi * (radius ** 2)
+            regional_area = math.pi * ((radius * 3) ** 2)
+            global_area = 4 * math.pi * 6371 ** 2  # Surface terre en km²
+            
+            local_density = local_count / local_area if local_area > 0 else 0
+            regional_density = regional_count / regional_area if regional_area > 0 else 0
+            global_density = global_count / global_area if global_area > 0 else 0
+            
+            # Normaliser les densités (pour l'affichage)
+            max_density = max(local_density, regional_density, global_density)
+            if max_density > 0:
+                local_density_norm = local_density / max_density
+                regional_density_norm = regional_density / max_density
+                global_density_norm = global_density / max_density
+            else:
+                local_density_norm = regional_density_norm = global_density_norm = 0
+            
+            # Créer le graphique
+            fig = go.Figure()
+            
+            # Ajouter les barres
+            fig.add_trace(go.Bar(
+                x=['Zone locale', 'Région', 'Global'],
+                y=[local_density_norm, regional_density_norm, global_density_norm],
+                text=[f"{local_count} météorites", 
+                      f"{regional_count} météorites", 
+                      f"{global_count} météorites"],
+                textposition='auto',
+                marker_color=['#0077b6', '#00b4d8', '#90e0ef'],
+                hoverinfo='text'
+            ))
+            
+            # Mise en page
+            fig.update_layout(
+                title="Densité comparative",
+                yaxis_title="Densité relative",
+                showlegend=False,
+                margin=dict(l=10, r=10, t=40, b=30),
+                height=200
             )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_region_comparison: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
+            
+    @app.callback(
+        Output('zone-mass-distribution', 'figure'),
+        [Input('selected-location', 'data'),
+         Input('analysis-radius', 'value')]
+    )
+    def update_zone_mass_distribution(location, radius):
+        if not location:
+            return empty_figure_with_message("Sélectionnez un point sur la carte")
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            if len(nearby_data) < 5 or 'mass (g)' not in nearby_data.columns:
+                return empty_figure_with_message("Données insuffisantes")
+                
+            # Extraire les masses
+            masses = nearby_data['mass (g)'].dropna()
+            if len(masses) < 5:
+                return empty_figure_with_message("Données de masse insuffisantes")
+                
+            # Créer le graphique
+            fig = go.Figure()
+            
+            # Ajouter l'histogramme des masses (échelle log)
+            fig.add_trace(go.Histogram(
+                x=np.log10(masses[masses > 0]),
+                nbinsx=10,
+                marker_color='#0077b6',
+                opacity=0.7
+            ))
+            
+            # Mise en page
+            fig.update_layout(
+                title="Distribution des masses",
+                xaxis_title="Log10(Masse en g)",
+                yaxis_title="Nombre",
+                showlegend=False,
+                margin=dict(l=10, r=10, t=40, b=30),
+                height=200
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_zone_mass_distribution: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
+            
+    @app.callback(
+        Output('zone-type-distribution', 'figure'),
+        [Input('selected-location', 'data'),
+         Input('analysis-radius', 'value')]
+    )
+    def update_zone_type_distribution(location, radius):
+        if not location:
+            return empty_figure_with_message("Sélectionnez un point sur la carte")
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            if len(nearby_data) < 5 or 'recclass' not in nearby_data.columns:
+                return empty_figure_with_message("Données insuffisantes")
+                
+            # Compter les occurrences des classes
+            classes = nearby_data['recclass'].dropna()
+            if len(classes) < 3:
+                return empty_figure_with_message("Données de classe insuffisantes")
+                
+            class_counts = classes.value_counts().nlargest(5)
+            
+            # Créer le graphique
+            fig = go.Figure()
+            
+            # Ajouter le camembert
+            fig.add_trace(go.Pie(
+                labels=class_counts.index,
+                values=class_counts.values,
+                hole=0.4,
+                marker=dict(
+                    colors=px.colors.qualitative.Pastel
+                ),
+                textinfo='percent',
+                hoverinfo='label+percent+value'
+            ))
+            
+            # Mise en page
+            fig.update_layout(
+                title="Types de météorites",
+                showlegend=False,
+                margin=dict(l=0, r=0, t=40, b=0),
+                height=200
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_zone_type_distribution: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
+            
+    @app.callback(
+        Output('zone-timeline', 'figure'),
+        [Input('selected-location', 'data'),
+         Input('analysis-radius', 'value')]
+    )
+    def update_zone_timeline(location, radius):
+        if not location:
+            return empty_figure_with_message("Sélectionnez un point sur la carte")
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            if len(nearby_data) < 5 or 'year' not in nearby_data.columns:
+                return empty_figure_with_message("Données insuffisantes")
+                
+            # Extraire les années
+            years = nearby_data['year'].dropna()
+            if len(years) < 5:
+                return empty_figure_with_message("Données temporelles insuffisantes")
+                
+            # Grouper par décennie
+            nearby_data['decade'] = (nearby_data['year'] // 10) * 10
+            decade_counts = nearby_data.groupby('decade').size().reset_index(name='count')
+            
+            # Créer le graphique
+            fig = go.Figure()
+            
+            # Ajouter la courbe d'évolution
+            fig.add_trace(go.Scatter(
+                x=decade_counts['decade'],
+                y=decade_counts['count'],
+                mode='lines+markers',
+                line=dict(color='#0077b6', width=2),
+                marker=dict(size=8, color='#0077b6'),
+                fill='tozeroy',
+                fillcolor='rgba(0, 119, 182, 0.2)'
+            ))
+            
+            # Mise en page
+            fig.update_layout(
+                title="Chronologie des découvertes",
+                xaxis_title="Décennie",
+                yaxis_title="Nombre",
+                showlegend=False,
+                margin=dict(l=10, r=10, t=40, b=30),
+                height=200
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_zone_timeline: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
+            
+    @app.callback(
+        Output('zone-density-map', 'figure'),
+        [Input('selected-location', 'data'),
+         Input('analysis-radius', 'value')]
+    )
+    def update_zone_density_map(location, radius):
+        if not location:
+            return empty_figure_with_message("Sélectionnez un point sur la carte")
+            
+        try:
+            # Extraire coordonnées
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données des météorites dans le rayon d'analyse
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius * 2)
+            
+            if len(nearby_data) < 5:
+                return empty_figure_with_message("Données insuffisantes")
+                
+            # Créer le graphique de densité
+            fig = go.Figure()
+            
+            # Ajouter la carte de densité
+            fig.add_trace(go.Densitymapbox(
+                lat=nearby_data['reclat'],
+                lon=nearby_data['reclong'],
+                z=[1] * len(nearby_data),
+                radius=20,
+                colorscale='Viridis',
+                showscale=False
+            ))
             
             # Ajouter un marqueur pour le point sélectionné
             fig.add_trace(go.Scattermapbox(
@@ -2408,113 +3210,47 @@ def register_callbacks(app, data_path):
                 lon=[lon],
                 mode='markers',
                 marker=dict(
-                    size=15,
-                    color='#ff9500',
-                    symbol='marker'
+                    size=10,
+                    color='red'
                 ),
-                name="Emplacement sélectionné",
-                hoverinfo="text",
-                hovertext=f"Lat: {lat:.4f}, Lon: {lon:.4f}"
+                showlegend=False
             ))
             
-            # Améliorer la mise en page
+            # Mise en page
             fig.update_layout(
-                margin=dict(l=0, r=0, t=0, b=0),
-                height=500,
-                coloraxis_colorbar=dict(
-                    title="Probabilité",
-                    tickvals=[0, 0.25, 0.5, 0.75, 1],
-                    ticktext=["0%", "25%", "50%", "75%", "100%"]
+                mapbox=dict(
+                    style='carto-positron',
+                    center=dict(lat=lat, lon=lon),
+                    zoom=4
                 ),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
+                margin=dict(l=0, r=0, t=40, b=0),
+                height=200
             )
             
-            # Trouver le point de probabilité maximale
-            max_prob_idx = np.argmax(probabilities)
-            max_prob_lat = lats_flat[max_prob_idx]
-            max_prob_lon = lons_flat[max_prob_idx]
-            max_prob = probabilities[max_prob_idx]
-            
-            # Déterminer si le point sélectionné est dans une zone de données suffisantes
-            avg_prob = np.mean(probabilities)
-            point_prob = heatmap_df[(heatmap_df['lat'] == lat) & (heatmap_df['lon'] == lon)]['probability'].values[0] if not heatmap_df[(heatmap_df['lat'] == lat) & (heatmap_df['lon'] == lon)].empty else 0
-            
-            # Vérifier sommairement si on est sur l'eau (simplification)
-            is_on_water = False  # Dans un cas réel, utilisez une API géographique
-            
-            # Créer un résumé textuel
-            summary = html.Div([
-                html.H6("Analyse de probabilité spatiale", className="mt-3 mb-2"),
-                html.P([
-                    "Coordonnées du point: ",
-                    html.Span(f"Lat {lat:.4f}, Lon {lon:.4f}", className="fw-bold")
-                ]),
-                html.P([
-                    "Rayon d'analyse: ",
-                    html.Span(f"{radius}°", className="fw-bold")
-                ]),
-                html.P([
-                    "Probabilité au point sélectionné: ",
-                    html.Span(f"{point_prob:.2%}", className="fw-bold text-primary")
-                ]),
-                html.P([
-                    "Point de probabilité maximale: ",
-                    html.Span(f"Lat {max_prob_lat:.4f}, Lon {max_prob_lon:.4f} ({max_prob:.2%})", className="fw-bold")
-                ]),
-                html.P([
-                    "Probabilité moyenne dans la zone: ",
-                    html.Span(f"{avg_prob:.2%}", className="fw-bold")
-                ]),
-                
-                # Avertissement pour les zones marines
-                html.Div([
-                    html.P([
-                        html.I(className="fas fa-info-circle me-2"),
-                        "Note: Les probabilités en zones marines sont sous-représentées car historiquement moins de météorites y sont recensées (biais de découverte)."
-                    ], className="mb-0")
-                ], className="alert alert-info mt-3", style={'display': 'block' if is_on_water else 'none'})
-            ])
-            
-            # Créer le graphique
-            graph = dcc.Graph(
-                figure=fig,
-                config={
-                    'displayModeBar': True,
-                    'modeBarButtonsToRemove': ['autoScale2d', 'lasso2d', 'select2d'],
-                    'toImageButtonOptions': {
-                        'format': 'png',
-                        'filename': 'spatial_probability',
-                        'scale': 2
-                    }
-                }
-            )
-            
-            return summary, graph
+            return fig
             
         except Exception as e:
-            import traceback
-            trace = traceback.format_exc()
-            print(f"Erreur dans update_spatial_prediction: {str(e)}")
-            print(trace)
-            
-            error_msg = html.Div([
-                html.H5("Erreur d'analyse spatiale", className="text-danger"),
-                html.P(f"Une erreur s'est produite lors de la génération de la carte de probabilité: {str(e)}"),
-                html.Details([
-                    html.Summary("Détails techniques (cliquez pour développer)"),
-                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
-                ], className="mt-2")
-            ], className="alert alert-danger")
-            
-            return error_msg, ""
-    
-    # Ajouter le support pour afficher les panels temporels et spatiaux
+            print(f"Erreur dans update_zone_density_map: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
+
+    # Callback pour mettre à jour l'interface en temps réel si l'option est activée
+    @app.callback(
+        Output('calculate-prediction', 'n_clicks', allow_duplicate=True),
+        [Input('realtime-updates', 'value'),
+         Input('analysis-radius', 'value'),
+         Input('forecast-horizon', 'value'),
+         Input('environmental-factor', 'value'),
+         Input('historical-weight', 'value'),
+         Input('model-complexity', 'value')],
+        [State('calculate-prediction', 'n_clicks')],
+        prevent_initial_call=True
+    )
+    def trigger_updates_if_realtime(realtime_enabled, *args):
+        if realtime_enabled:
+            return (args[0] or 0) + 1
+        return dash.no_update
+
+    # Callback pour basculer entre les vues de prédiction
     @app.callback(
         [Output('prediction-results-content', 'style'),
          Output('zone-analysis-content', 'style'),
@@ -2527,19 +3263,9 @@ def register_callbacks(app, data_path):
         [Input('btn-prediction-results', 'n_clicks'),
          Input('btn-zone-analysis', 'n_clicks'),
          Input('btn-temporal-prediction', 'n_clicks'),
-         Input('btn-spatial-prediction', 'n_clicks')],
-        [State('prediction-results-content', 'style'),
-         State('zone-analysis-content', 'style'),
-         State('temporal-prediction-content', 'style'),
-         State('spatial-prediction-content', 'style'),
-         State('btn-prediction-results', 'className'),
-         State('btn-zone-analysis', 'className'),
-         State('btn-temporal-prediction', 'className'),
-         State('btn-spatial-prediction', 'className')]
+         Input('btn-spatial-prediction', 'n_clicks')]
     )
-    def toggle_prediction_views(pred_clicks, zone_clicks, temporal_clicks, spatial_clicks,
-                              pred_style, zone_style, temporal_style, spatial_style,
-                              pred_btn_class, zone_btn_class, temporal_btn_class, spatial_btn_class):
+    def toggle_prediction_views(pred_clicks, zone_clicks, temporal_clicks, spatial_clicks):
         # Déterminer quel bouton a été cliqué en dernier
         ctx = dash.callback_context
         
@@ -2595,532 +3321,3 @@ def register_callbacks(app, data_path):
             spatial_btn = active_btn.replace(" me-2", "")  # Pas de marge pour le dernier
         
         return pred_display, zone_display, temporal_display, spatial_display, pred_btn, zone_btn, temporal_btn, spatial_btn
-
-    @app.callback(
-        [Output('distribution-map-content', 'style'),
-         Output('heatmap-content', 'style'),
-         Output('btn-distribution-map', 'className'),
-         Output('btn-heatmap', 'className')],
-        [Input('btn-distribution-map', 'n_clicks'),
-         Input('btn-heatmap', 'n_clicks')]
-    )
-    def toggle_map_views(dist_clicks, heat_clicks):
-        ctx = dash.callback_context
-        if not ctx.triggered:
-            # État initial : afficher la distribution
-            return (
-                {'display': 'block'},
-                {'display': 'none'},
-                'btn btn-primary me-2',
-                'btn btn-outline-primary'
-            )
-        
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        
-        if button_id == 'btn-distribution-map':
-            return (
-                {'display': 'block'},
-                {'display': 'none'},
-                'btn btn-primary me-2',
-                'btn btn-outline-primary'
-            )
-        else:
-            return (
-                {'display': 'none'},
-                {'display': 'block'},
-                'btn btn-outline-primary me-2',
-                'btn btn-primary'
-            )
-
-    # Callback pour activer/désactiver le mode debug
-    @app.callback(
-        Output('debug-container', 'style'),
-        [Input('toggle-debug', 'n_clicks')],
-        [State('debug-container', 'style')]
-    )
-    def toggle_debug_mode(n_clicks, current_style):
-        if n_clicks is None:
-            return current_style
-        
-        if n_clicks % 2 == 1:  # Impair = montrer
-            return {'display': 'block', 'position': 'fixed', 'bottom': '0', 'left': '0', 'right': '0', 
-                   'max-height': '200px', 'overflow': 'auto', 'z-index': '1000', 'opacity': '0.9'}
-        else:  # Pair = cacher
-            return {'display': 'none'}
-
-    # Callback pour afficher les messages de debug dans l'interface
-    @app.callback(
-        Output('debug-output', 'children'),
-        [Input('debug-data', 'data')]
-    )
-    def update_debug_output(debug_data):
-        if not debug_data:
-            return ""
-        return html.Pre(debug_data, className="debug-text")
-    
-    # Callback pour mettre à jour l'interface en temps réel si l'option est activée
-    @app.callback(
-        Output('calculate-prediction', 'n_clicks'),
-        [Input('realtime-updates', 'value'),
-         Input('analysis-radius', 'value'),
-         Input('forecast-horizon', 'value'),
-         Input('environmental-factor', 'value'),
-         Input('historical-weight', 'value'),
-         Input('model-complexity', 'value')],
-        [State('calculate-prediction', 'n_clicks')]
-    )
-    def trigger_updates_if_realtime(realtime_enabled, *args):
-        if not ctx.triggered:
-            return dash.no_update
-            
-        # Si ce n'est pas le bouton "temps réel" qui a déclenché le callback
-        if ctx.triggered[0]['prop_id'] != 'realtime-updates.value':
-            # Si le mode temps réel est activé, on simule un clic sur le bouton
-            if realtime_enabled:
-                current_clicks = args[-1] if args[-1] is not None else 0
-                return current_clicks + 1
-        
-        return dash.no_update
-        
-    # Callback pour mettre à jour le jauge de fiabilité et son explication
-    @app.callback(
-        [Output('reliability-gauge', 'value'),
-         Output('reliability-explanation', 'children')],
-        [Input('selected-location', 'data'),
-         Input('forecast-horizon', 'value'),
-         Input('analysis-radius', 'value'),
-         Input('model-complexity', 'value'),
-         Input('environmental-factor', 'value'),
-         Input('historical-weight', 'value')]
-    )
-    def update_reliability_gauge(selected_location, horizon, radius, complexity, env_factor, hist_weight):
-        if not selected_location:
-            return 0, "Sélectionnez un emplacement sur la carte pour voir l'indice de fiabilité."
-            
-        # Calculer l'indice de fiabilité en fonction des paramètres
-        reliability = calculate_reliability_score(selected_location, horizon, radius, complexity, env_factor, hist_weight)
-        
-        # Générer l'explication en fonction du score
-        explanation = get_reliability_explanation(reliability, horizon, radius, complexity)
-        
-        return reliability, explanation
-        
-    # Fonction pour calculer le score de fiabilité
-    def calculate_reliability_score(location, horizon, radius, complexity, env_factor, hist_weight):
-        # Paramètres de base pour la fiabilité
-        base_score = 80  # Score de base assez élevé
-        
-        # Pénalité pour l'horizon de prévision (plus long = moins fiable)
-        horizon_penalty = min(40, horizon * 0.8)  # Max 40% de pénalité
-        
-        # Bonus pour le rayon d'analyse (plus grand = plus fiable, jusqu'à un certain point)
-        radius_bonus = min(15, radius * 3)  # Max 15% de bonus
-        
-        # Pénalité pour la complexité du modèle (trop simple ou trop complexe = moins fiable)
-        complexity_penalty = abs(complexity - 7) * 2  # Optimum autour de 7, max 12% de pénalité
-        
-        # Vérifier la disponibilité des données dans la zone
-        lat, lon = location['lat'], location['lon']
-        nearby_data_count = len(meteorite_data.get_meteorites_in_radius(lat, lon, radius))
-        data_factor = min(1.0, nearby_data_count / 50)  # Saturation à 50 météorites
-        data_bonus = data_factor * 20  # Max 20% de bonus
-        
-        # Calculer le score final
-        score = base_score - horizon_penalty + radius_bonus - complexity_penalty + data_bonus
-        
-        # Ajuster avec les facteurs environnementaux et historiques
-        score = score * (0.8 + env_factor * 0.4)  # Influence du facteur environnemental
-        score = score * (0.8 + hist_weight * 0.4)  # Influence du poids historique
-        
-        # Limiter le score entre 0 et 100
-        return max(0, min(100, score))
-        
-    # Fonction pour générer l'explication de la fiabilité
-    def get_reliability_explanation(score, horizon, radius, complexity):
-        if score < 30:
-            if horizon > 30:
-                return "Fiabilité faible : l'horizon de prévision est très éloigné, rendant les prédictions moins certaines."
-            elif radius < 2:
-                return "Fiabilité faible : le rayon d'analyse est petit, les données locales pourraient être insuffisantes."
-            else:
-                return "Fiabilité faible : combinaison de paramètres défavorables pour une prédiction précise."
-        elif score < 70:
-            if horizon > 15:
-                return "Fiabilité moyenne : l'horizon de prévision à long terme réduit la précision, mais les autres paramètres sont favorables."
-            elif complexity > 8:
-                return "Fiabilité moyenne : le modèle très complexe pourrait surajuster les données, réduisant la généralisation."
-            elif complexity < 3:
-                return "Fiabilité moyenne : le modèle simple pourrait ne pas capturer tous les motifs pertinents dans les données."
-            else:
-                return "Fiabilité moyenne : équilibre acceptable entre les différents facteurs de prédiction."
-        else:
-            return "Fiabilité élevée : combinaison optimale des paramètres et disponibilité suffisante de données historiques dans la région."
-
-    # Callback pour la distribution des masses
-    @app.callback(
-        Output('mass-distribution-chart', 'figure'),
-        [Input('calculate-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('analysis-radius', 'value'),
-         State('forecast-horizon', 'value')]
-    )
-    def update_mass_distribution(n_clicks, selected_location, radius, horizon):
-        if not n_clicks or not selected_location:
-            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
-        
-        try:
-            # Récupérer les météorites dans le rayon d'analyse
-            lat, lon = selected_location['lat'], selected_location['lon']
-            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
-            
-            if len(nearby_data) < 5:
-                return empty_figure_with_message("Données insuffisantes pour l'analyse.")
-            
-            # Préparer les données historiques et prédites
-            historical_masses = nearby_data['mass (g)'].dropna()
-            
-            # Simuler les masses prédites (à remplacer par un vrai modèle)
-            np.random.seed(42)  # Pour reproductibilité
-            n_samples = min(100, max(20, int(len(historical_masses) * 0.3)))
-            predicted_masses = np.random.lognormal(
-                np.log(historical_masses.median()), 
-                historical_masses.std() / historical_masses.mean() * 0.8, 
-                n_samples
-            )
-            
-            # Créer la figure
-            fig = go.Figure()
-            
-            # Ajouter l'histogramme des masses historiques
-            fig.add_trace(go.Histogram(
-                x=historical_masses,
-                name="Masses historiques",
-                opacity=0.7,
-                marker_color='blue',
-                nbinsx=20,
-                histnorm='probability'
-            ))
-            
-            # Ajouter l'histogramme des masses prédites
-            fig.add_trace(go.Histogram(
-                x=predicted_masses,
-                name=f"Masses prédites (horizon: {horizon} ans)",
-                opacity=0.7,
-                marker_color='red',
-                nbinsx=20,
-                histnorm='probability'
-            ))
-            
-            # Mise en page
-            fig.update_layout(
-                title=f"Distribution des masses dans un rayon de {radius}° de la sélection",
-                xaxis_title="Masse (g)",
-                yaxis_title="Probabilité",
-                barmode='overlay',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
-            )
-            
-            # Échelle logarithmique pour les masses
-            fig.update_xaxes(type="log")
-            
-            return fig
-            
-        except Exception as e:
-            print(f"Erreur dans update_mass_distribution: {str(e)}")
-            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
-    
-    # Callback pour l'évolution des classifications
-    @app.callback(
-        Output('class-evolution-chart', 'figure'),
-        [Input('calculate-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('analysis-radius', 'value'),
-         State('forecast-horizon', 'value')]
-    )
-    def update_class_evolution(n_clicks, selected_location, radius, horizon):
-        if not n_clicks or not selected_location:
-            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
-        
-        try:
-            # Récupérer les météorites dans le rayon d'analyse
-            lat, lon = selected_location['lat'], selected_location['lon']
-            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
-            
-            if len(nearby_data) < 5:
-                return empty_figure_with_message("Données insuffisantes pour l'analyse.")
-            
-            # Créer des périodes de temps (décennies)
-            nearby_data = nearby_data.dropna(subset=['year'])
-            
-            if len(nearby_data) < 5:
-                return empty_figure_with_message("Données temporelles insuffisantes pour l'analyse.")
-                
-            nearby_data['decade'] = (nearby_data['year'] // 10) * 10
-            class_by_decade = nearby_data.groupby(['decade', 'recclass']).size().reset_index(name='count')
-            
-            # Obtenir les N classes les plus courantes
-            top_classes = nearby_data['recclass'].value_counts().nlargest(5).index.tolist()
-            class_by_decade = class_by_decade[class_by_decade['recclass'].isin(top_classes)]
-            
-            # Préparer les données pour le graphique
-            decades = sorted(nearby_data['decade'].unique())
-            
-            # Ajouter les décennies futures pour la prédiction
-            current_year = datetime.now().year
-            current_decade = (current_year // 10) * 10
-            future_decades = [current_decade + (i * 10) for i in range(1, (horizon // 10) + 1)]
-            all_decades = sorted(list(decades) + future_decades)
-            
-            # Créer la figure
-            fig = go.Figure()
-            
-            # Couleurs pour les classes
-            colors = px.colors.qualitative.Plotly[:len(top_classes)]
-            
-            # Ajouter les lignes historiques pour chaque classe
-            for i, cls in enumerate(top_classes):
-                cls_data = class_by_decade[class_by_decade['recclass'] == cls]
-                
-                # Données historiques
-                historical_data = {}
-                for _, row in cls_data.iterrows():
-                    historical_data[row['decade']] = row['count']
-                
-                # Remplir les décennies manquantes
-                for decade in decades:
-                    if decade not in historical_data:
-                        historical_data[decade] = 0
-                
-                # Trier les données par décennie
-                sorted_data = [historical_data.get(decade, 0) for decade in decades]
-                
-                # Simuler les prédictions futures (à remplacer par un modèle réel)
-                if len(sorted_data) >= 2:
-                    # Tendance simple basée sur les dernières données
-                    recent_data = sorted_data[-3:] if len(sorted_data) > 3 else sorted_data
-                    avg_change = sum(recent_data) / len(recent_data)
-                    
-                    last_value = sorted_data[-1] if sorted_data else 0
-                    predicted_values = []
-                    for i in range(len(future_decades)):
-                        # Simuler une tendance avec du bruit
-                        next_val = max(0, last_value * (1 + 0.1 * np.random.randn() + 0.05))
-                        predicted_values.append(next_val)
-                        last_value = next_val
-                else:
-                    # Pas assez de données, utiliser une simulation simple
-                    predicted_values = [1 + np.random.randint(0, 3) for _ in range(len(future_decades))]
-                
-                # Combiner historique et prédictions
-                all_values = sorted_data + predicted_values
-                all_values_dict = {decade: value for decade, value in zip(all_decades, all_values)}
-                
-                # Tracer la ligne
-                fig.add_trace(go.Scatter(
-                    x=decades,
-                    y=[all_values_dict[decade] for decade in decades],
-                    mode='lines+markers',
-                    name=cls,
-                    line=dict(color=colors[i], width=2),
-                    marker=dict(size=7, color=colors[i])
-                ))
-                
-                # Ajouter la partie prédite (ligne pointillée)
-                if future_decades:
-                    fig.add_trace(go.Scatter(
-                        x=future_decades,
-                        y=[all_values_dict[decade] for decade in future_decades],
-                        mode='lines+markers',
-                        name=f"{cls} (prédit)",
-                        line=dict(color=colors[i], width=2, dash='dash'),
-                        marker=dict(size=7, color=colors[i], symbol='diamond'),
-                        showlegend=False
-                    ))
-            
-            # Ajouter une ligne verticale pour séparer historique et prédiction
-            fig.add_shape(
-                type="line",
-                x0=current_decade, y0=0,
-                x1=current_decade, y1=1,
-                yref="paper",
-                line=dict(color="gray", width=2, dash="dot")
-            )
-            
-            # Ajouter une annotation pour marquer le présent
-            fig.add_annotation(
-                x=current_decade,
-                y=1,
-                yref="paper",
-                text="Présent",
-                showarrow=True,
-                arrowhead=2,
-                ax=0,
-                ay=-30
-            )
-            
-            # Mise en page
-            fig.update_layout(
-                title="Évolution des classifications de météorites au fil du temps",
-                xaxis_title="Année",
-                yaxis_title="Nombre de météorites",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
-            )
-            
-            return fig
-            
-        except Exception as e:
-            print(f"Erreur dans update_class_evolution: {str(e)}")
-            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
-            
-    # Fonction utilitaire pour créer une figure vide avec un message
-    def empty_figure_with_message(message):
-        fig = go.Figure()
-        fig.add_annotation(
-            text=message,
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(size=16)
-        )
-        fig.update_layout(
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-        )
-        return fig
-
-    @app.callback(
-        Output('time-prediction-chart', 'figure'),
-        [Input('calculate-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('forecast-horizon', 'value'),
-         State('environmental-factor', 'value'),
-         State('historical-weight', 'value')]
-    )
-    def update_time_prediction_chart(n_clicks, selected_location, horizon, env_factor, hist_weight):
-        if not n_clicks or not selected_location:
-            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
-        
-        try:
-            # Récupérer les coordonnées
-            lat, lon = selected_location['lat'], selected_location['lon']
-            
-            # Récupérer les météorites dans la région
-            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, 5.0)  # Rayon fixe pour cette analyse
-            
-            if len(nearby_data) < 5:
-                return empty_figure_with_message("Données insuffisantes pour l'analyse temporelle.")
-            
-            # Créer l'axe temporel
-            current_year = datetime.now().year
-            future_years = list(range(current_year, current_year + horizon + 1))
-            
-            # Facteurs d'ajustement basés sur les paramètres
-            base_probability = 0.05 + (0.15 * env_factor)  # Probabilité de base entre 5% et 20%
-            growth_rate = 0.01 + (0.02 * (1 - hist_weight))  # Taux de croissance entre 1% et 3% par an
-            
-            # Générer des probabilités simulées
-            probabilities = []
-            for i, year in enumerate(future_years):
-                # Simulation simple avec croissance et fluctuations aléatoires
-                growth_factor = 1 + (growth_rate * i) 
-                random_factor = 1 + (0.1 * np.random.randn())  # Fluctuation aléatoire de ±10%
-                prob = min(0.95, base_probability * growth_factor * random_factor)  # Limité à 95% max
-                probabilities.append(prob)
-            
-            # Probabilités cumulatives (chances qu'au moins une météorite tombe d'ici cette année)
-            cumulative_probs = []
-            cumulative_prob = 0
-            for prob in probabilities:
-                cumulative_prob = 1 - (1 - prob) * (1 - cumulative_prob)  # Formule de probabilité cumulative
-                cumulative_probs.append(cumulative_prob)
-            
-            # Créer la figure
-            fig = go.Figure()
-            
-            # Ajouter les probabilités annuelles
-            fig.add_trace(go.Bar(
-                x=future_years,
-                y=probabilities,
-                name='Probabilité annuelle',
-                marker_color='rgba(55, 83, 109, 0.7)',
-                hovertemplate='%{y:.1%}'
-            ))
-            
-            # Ajouter les probabilités cumulatives
-            fig.add_trace(go.Scatter(
-                x=future_years,
-                y=cumulative_probs,
-                mode='lines+markers',
-                name='Probabilité cumulative',
-                marker=dict(size=8, color='rgb(200, 50, 50)'),
-                line=dict(width=3, color='rgb(200, 50, 50)'),
-                hovertemplate='%{y:.1%}'
-            ))
-            
-            # Ajouter une ligne de seuil à 50% de probabilité
-            fig.add_shape(
-                type="line",
-                x0=future_years[0],
-                y0=0.5,
-                x1=future_years[-1],
-                y1=0.5,
-                line=dict(color="rgba(0, 0, 0, 0.5)", width=1, dash="dash")
-            )
-            
-            # Estimer l'année où la probabilité dépasse 50%
-            threshold_year = None
-            for i, prob in enumerate(cumulative_probs):
-                if prob >= 0.5:
-                    threshold_year = future_years[i]
-                    break
-            
-            # Ajouter une annotation pour l'année seuil
-            if threshold_year:
-                fig.add_annotation(
-                    x=threshold_year,
-                    y=0.5,
-                    text=f"Seuil 50%: {threshold_year}",
-                    showarrow=True,
-                    arrowhead=1,
-                    ax=0,
-                    ay=-40
-                )
-            
-            # Mise en page
-            fig.update_layout(
-                title=f"Prévision d'impact météoritique pour la zone de {lat:.4f}, {lon:.4f}",
-                xaxis_title="Année",
-                yaxis_title="Probabilité d'impact",
-                barmode='overlay',
-                yaxis=dict(
-                    tickformat='.0%',
-                    range=[0, 1]
-                ),
-                legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.15,
-                    xanchor="center",
-                    x=0.5
-                ),
-                margin=dict(l=40, r=30, t=50, b=80),  # Augmenter la marge du bas pour la légende
-                hovermode="x unified"
-            )
-            
-            return fig
-        
-        except Exception as e:
-            print(f"Erreur dans update_time_prediction_chart: {str(e)}")
-            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
