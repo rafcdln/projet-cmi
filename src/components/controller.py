@@ -12,6 +12,20 @@ import dash
 import sys
 import traceback
 from utils.config import STOP_ON_ERROR, VERBOSE_ERRORS, DEFAULT_MAP_STYLE
+from sklearn.preprocessing import StandardScaler
+import re
+import logging
+import os
+
+# Configuration du logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger('meteorite_dashboard')
 
 # Coordonnées centrées sur la France
 FRANCE_LAT = 46.603354
@@ -19,54 +33,94 @@ FRANCE_LON = 1.888334
 FRANCE_ZOOM = 4
 
 def register_callbacks(app, data_path):
-    # Charger les données
     try:
+        # Initialisation des modèles à l'intérieur de register_callbacks
+        # pour qu'ils soient accessibles à tous les callbacks
+        global meteorite_data, ml_model
+        
+        # Chargement des données météorites
         meteorite_data = MeteoriteData(data_path)
-        ml_model = MeteoriteML(data_path)
+        
+        # Initialisation et entraînement du modèle de machine learning
+        ml_model = MeteoriteML(meteorite_data.data)
         
         # Entraînement initial des modèles
-        ml_model.train_mass_predictor()
-        ml_model.train_class_predictor()
-        print("INFO: Modèles entraînés avec succès")
+        try:
+            print("Entraînement des modèles de prédiction...")
+            ml_model.train_mass_predictor()
+            ml_model.train_class_predictor()
+            print("Modèles entraînés avec succès")
+        except Exception as e:
+            print(f"ERREUR lors de l'entraînement des modèles: {str(e)}")
+            print(traceback.format_exc())
+        
+        # Configuration des styles de carte
+        map_style_options = {
+            'clair': 'carto-positron',
+            'sombre': 'carto-darkmatter',
+            'standard': 'open-street-map',
+            'satellite': 'satellite'
+        }
+        
+        # Helper function pour appliquer le style de carte
+        def get_mapbox_style(map_style):
+            map_style = map_style or DEFAULT_MAP_STYLE
+            return map_style_options.get(map_style, map_style_options.get(DEFAULT_MAP_STYLE, 'carto-positron'))
+        
+        # Configurer la fonction de debugging
+        def debug_callback(message, level='info'):
+            """
+            Affiche un message de débogage dans les logs
+            et le stocke pour l'affichage dans l'interface
+            """
+            message_str = str(message)
+            if level == 'info':
+                logger.info(message_str)
+            elif level == 'warning':
+                logger.warning(message_str)
+            elif level == 'error':
+                logger.error(message_str)
+                
+            try:
+                print(f"{level.upper()}: {message_str}")
+                return message_str
+            except Exception as e:
+                logger.error(f"Erreur dans debug_callback: {str(e)}")
+                return None
     except Exception as e:
-        error_msg = f"ERREUR FATALE lors du chargement des données: {str(e)}"
-        print(error_msg)
+        print(f"ERREUR FATALE lors du chargement des données: {str(e)}")
         print(traceback.format_exc())
-        # Ne pas planter l'application, mais initialiser avec des données vides
+        
+        # Si STOP_ON_ERROR est True, on arrête l'application
+        if STOP_ON_ERROR:
+            sys.exit(1)
+        
+        # Sinon, on initialise des variables à None pour éviter les erreurs
+        # mais l'application fonctionnera partiellement
         meteorite_data = None
         ml_model = None
-        if STOP_ON_ERROR:
-            print("Arrêt du programme demandé après erreur.")
-            sys.exit(1)
     
-    # Configuration des styles de carte
-    map_style_options = {
-        'clair': 'carto-positron',
-        'sombre': 'carto-darkmatter',
-        'standard': 'open-street-map',
-        'satellite': 'satellite'
-    }
-    
-    # Helper function pour appliquer le style de carte
-    def get_mapbox_style(map_style):
-        map_style = map_style or DEFAULT_MAP_STYLE
-        return map_style_options.get(map_style, map_style_options.get(DEFAULT_MAP_STYLE, 'carto-positron')), None
-    
-    # Fonction utilitaire pour gérer les erreurs
-    def handle_error(e, function_name, additional_info=None):
-        error_type = type(e).__name__
-        error_msg = f"ERREUR dans {function_name}: {error_type}: {str(e)}"
-        print("\n" + "="*80)
+    # Wrapper pour gérer les erreurs dans les callbacks
+    def handle_error(e, func_name="fonction inconnue", details=""):
+        """
+        Gère les erreurs dans les callbacks de manière élégante
+        """
+        error_msg = f"ERREUR dans {func_name}: {type(e).__name__}: {str(e)}"
+        traceback_str = traceback.format_exc()
+        
+        # Afficher l'erreur dans le format lisible et standard
+        print(f"\n{'='*80}")
         print(error_msg)
-        if VERBOSE_ERRORS:
-            print("\nTraceback complet:")
-            print(traceback.format_exc())
-            if additional_info:
-                print("\nInformations supplémentaires:")
-                print(additional_info)
-        print("="*80 + "\n")
+        print("\nTraceback complet:")
+        print(traceback_str)
+        if details:
+            print("\nInformations supplémentaires:")
+            print(details)
+        print(f"{'='*80}\n")
+        
+        # Si configuré pour arrêter l'exécution en cas d'erreur
         if STOP_ON_ERROR:
-            print("Arrêt du programme demandé après erreur.")
+            print("Arrêt de l'application demandé après erreur.")
             sys.exit(1)
     
     # Fonction pour vérifier et corriger les problèmes de données avant Plotly Express
@@ -389,152 +443,130 @@ def register_callbacks(app, data_path):
     @error_handling_callback
     def update_heatmap(mass_range, classes, falls, decades, map_style, radius, 
                       colorscale, interactivity):
-        df = meteorite_data.get_filtered_data(
-            mass_range=mass_range,
-            classification=classes,
-            fall_type=falls,
-            decade_range=decades
-        )
-        
-        # Vérifier si des données sont disponibles
-        if df.empty:
-            fig = px.density_mapbox(
-                pd.DataFrame({'lat': [FRANCE_LAT], 'lon': [FRANCE_LON], 'value': [0]}),
-                lat='lat', lon='lon', z='value', zoom=FRANCE_ZOOM,
-                center=dict(lat=FRANCE_LAT, lon=FRANCE_LON)
+        """
+        Met à jour la carte de chaleur des météorites
+        """
+        try:
+            # Récupérer les données filtrées
+            filtered_data = meteorite_data.get_filtered_data(
+                mass_range=mass_range,
+                classification=classes,
+                fall_type=falls,
+                decade_range=decades
             )
+            
+            # Vérifier et nettoyer les données pour Plotly
+            df_clean = validate_dataframe_for_plotly(filtered_data, 'update_heatmap')
+            
+            # Obtenir le style de carte
+            actual_style = get_mapbox_style(map_style)
+            
+            # Créer la carte de chaleur
+            fig = go.Figure()
+            
+            # Ajouter la couche de chaleur
+            fig.add_densitymapbox(
+                lat=df_clean['reclat'],
+                lon=df_clean['reclong'],
+                radius=radius,
+                colorscale=colorscale,
+                hoverongaps=False,
+                hoverinfo='none',
+                showscale=True,
+                name='Densité'
+            )
+            
+            # Configuration de la mise en page
             fig.update_layout(
                 mapbox=dict(
-                    style="carto-positron", 
+                    style=actual_style,
                     center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
                     zoom=FRANCE_ZOOM
                 ),
-                margin={"r":0, "t":0, "l":0, "b":0},
-                height=650
+                margin=dict(l=0, r=0, t=0, b=0),
+                showlegend=False,
+                uirevision='constant'
             )
+            
+            # Configurer l'interactivité
+            if 'sync_views' in interactivity:
+                fig.update_layout(uirevision='sync')
+            
             return fig
-        
-        # Nettoyage des données pour éviter les NaN
-        df = df.dropna(subset=['mass (g)', 'reclat', 'reclong'])
-        
-        # Calculer le log de la masse pour une meilleure distribution des couleurs
-        df['log_mass'] = np.log10(df['mass (g)'])
-        
-        # Appliquer le style de carte
-        actual_style, _ = get_mapbox_style(map_style)
-        
-        fig = px.density_mapbox(
-            df, 
-            lat='reclat', 
-            lon='reclong', 
-            z='log_mass',
-            radius=radius,
-            zoom=FRANCE_ZOOM,
-            center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-            height=650,
-            opacity=0.9,
-            labels={'log_mass': 'Log10(Masse)'},
-            color_continuous_scale=colorscale,
-            hover_data={
-                'name': True,
-                'mass (g)': ':.2f',
-                'year': True,
-                'recclass': True
-            }
-        )
-        
-        # Mise à jour du layout
-        fig.update_layout(
-            mapbox=dict(
-                style=actual_style,
-            center=dict(lat=FRANCE_LAT, lon=FRANCE_LON),
-            zoom=FRANCE_ZOOM
-        ),
-        margin={"r":0,"t":0,"l":0,"b":0},
-            coloraxis_colorbar=dict(
-                title="Log10(Masse)",
-                titleside="right",
-                thicknessmode="pixels", 
-                thickness=20,
-                len=0.9,
-                xanchor="right",
-                x=0.99,
-                y=0.5
-            )
-        )
-        
-        return fig
+            
+        except Exception as e:
+            print(f"ERREUR dans update_heatmap: {str(e)}")
+            print(traceback.format_exc())
+            return go.Figure()  # Retourner une figure vide en cas d'erreur
     
     @app.callback(
         Output('prediction-map', 'figure'),
         [Input('selected-location', 'data'),
-         Input('map-style-dropdown', 'value')]
+         Input('map-style-dropdown', 'value'),
+         Input('analysis-radius', 'value')]
     )
-    def update_prediction_map(selected_location, map_style):
-        # Création de la carte de base avec les données historiques
+    def update_prediction_map(selected_location, map_style, analysis_radius):
+        debug_callback("Mise à jour de la carte de prédiction")
+        
+        # Style de carte
+        actual_style = get_mapbox_style(map_style)
+        
+        # Créer une carte vierge
+        fig = go.Figure()
+        
+        # Récupérer les données des météorites
         df = meteorite_data.get_filtered_data()
         
-        # Nettoyer les données pour éviter les NaN
-        df = df.dropna(subset=['reclat', 'reclong', 'mass (g)'])
+        # Ajouter les points des météorites existantes avec une faible opacité
+        fig.add_trace(go.Scattermapbox(
+            lat=df['reclat'],
+            lon=df['reclong'],
+            mode='markers',
+            marker=dict(
+                size=8,
+                color='blue',
+                opacity=0.3
+            ),
+            hoverinfo='text',
+            text=df.apply(
+                lambda row: f"<b>{row['name']}</b><br>" +
+                          f"Masse: {row['mass (g)']:.1f}g<br>" +
+                          f"Année: {int(row['year']) if not pd.isna(row['year']) else 'Inconnue'}<br>" +
+                          f"Classe: {row['recclass']}<br>" +
+                          f"Type: {row['fall']}", 
+                axis=1
+            ),
+            name='Météorites existantes'
+        ))
         
-        # Sous-échantillonner les données pour accélérer le rendu (max 1000 points)
-        if len(df) > 1000:
-            df = df.sample(1000, random_state=42)
-        
-        # Calculer le log de la masse pour les tailles des points
-        df['log_mass'] = np.log10(df['mass (g)'])
-        
-        # Créer une colonne de texte pour le survol
-        df['hover_text'] = df.apply(
-            lambda x: f"<b>{x['name']}</b><br>" +
-                      f"Classe: {x['recclass']}<br>" +
-                      f"Masse: {x['mass (g)']:.2f}g<br>" +
-                      f"Année: {int(x['year']) if not np.isnan(x['year']) else 'Inconnue'}<br>" +
-                      f"Type: {x['fall']}",
-            axis=1
+        # Configurer la mise en page de base
+        fig.update_layout(
+            mapbox=dict(
+                style=actual_style,
+                center=dict(lat=20, lon=0),  # Vue mondiale par défaut
+                zoom=1.5  # Zoom mondial
+            ),
+            margin={"r":0,"t":0,"l":0,"b":0},
+            height=600,
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor="white",
+                bordercolor="gray",
+                borderwidth=1
+            )
         )
         
-        # Appliquer le style de carte
-        actual_style, _ = get_mapbox_style(map_style)
-        
-        fig = px.scatter_mapbox(
-            df,
-            lat='reclat',
-            lon='reclong',
-            opacity=0.7,  # Même opacité que le graphique principal
-            size='log_mass',
-            size_max=15,  # Taille max plus grande
-            color='recclass',  # Colorier par classe comme dans le graphique principal
-            hover_name='name',
-            custom_data=[df['reclat'], df['reclong'], df['log_mass'], df['name'], df['recclass'], 
-                        df['mass (g)'], df['year'], df['fall']],  # Inclure toutes les données pour le survol
-            color_discrete_sequence=px.colors.qualitative.Plotly,  # Utiliser la palette de couleurs Plotly
-            zoom=2,  # Vue mondiale par défaut
-            height=500,  # Augmenter la hauteur pour une meilleure visibilité
-            hover_data={
-                'reclat': False,
-                'reclong': False,
-                'log_mass': False,
-                'name': False,  # Déjà montré dans hover_name
-                'recclass': True,
-                'mass (g)': True,
-                'year': True,
-                'fall': True
-            }
-        )
-        
-        # Configuration du format de survol
-        fig.update_traces(
-            hovertemplate='<b>%{hovertext}</b><br>Lat: %{lat:.4f}<br>Lon: %{lon:.4f}<extra></extra>'
-        )
-        
-        # Ajout des instructions directement sur la carte
+        # Ajouter un texte explicatif sur la carte
         fig.add_annotation(
-            text="Cliquez n'importe où sur la carte pour sélectionner un point",
+            text="Cliquez sur la carte pour sélectionner un emplacement de prédiction",
             xref="paper", yref="paper",
-            x=0.5, y=0.05,
+            x=0.5, y=0.97,
             showarrow=False,
-            font=dict(size=14, color="black"),
+            font=dict(size=16, color="black"),
             bgcolor="white",
             bordercolor="gray",
             borderwidth=1,
@@ -542,72 +574,65 @@ def register_callbacks(app, data_path):
             align="center"
         )
         
-        # Si un emplacement est sélectionné, ajouter un marqueur
+        # Si un emplacement est sélectionné, ajouter un cercle d'analyse et un marqueur
         if selected_location and 'lat' in selected_location and 'lon' in selected_location:
-            # Ajouter un cercle autour du point
-            lats, lons = create_circle(selected_location['lat'], selected_location['lon'], 2.5)
+            # Récupérer les coordonnées
+            lat, lon = selected_location['lat'], selected_location['lon']
+            
+            # Centrer la carte sur l'emplacement sélectionné avec un zoom adapté
+            fig.update_layout(
+                mapbox=dict(
+                    center=dict(lat=lat, lon=lon),
+                    zoom=4  # Zoom adapté à la visualisation de la zone
+                )
+            )
+            
+            # Dessiner le cercle d'analyse autour du point
+            radius_degrees = analysis_radius if analysis_radius else 2.5
+            lats, lons = create_circle(lat, lon, radius_degrees)
+            
+            # Ajouter le cercle d'analyse
             fig.add_trace(go.Scattermapbox(
                 lat=lats,
                 lon=lons,
                 mode='lines',
                 line=dict(
-                    width=2,
-                    color='#ff9500'
+                    width=3,
+                    color='#0066ff'  # Bleu plus vif
                 ),
-                name="Zone d'analyse (rayon 2.5°)",
-                hoverinfo="skip"
+                name=f"Zone d'analyse (rayon {radius_degrees}°)",
+                hoverinfo="name"
             ))
             
             # Ajouter un marqueur pour le point sélectionné
             fig.add_trace(go.Scattermapbox(
-                lat=[selected_location['lat']],
-                lon=[selected_location['lon']],
+                lat=[lat],
+                lon=[lon],
                 mode='markers',
                 marker=dict(
                     size=15,
-                    color='#ff9500',
-                    symbol='marker',
-                    line=dict(
-                        width=2,
-                        color='white'
-                    )
+                    color='#ff3300',  # Rouge-orange vif
+                    symbol='circle'
                 ),
-                name="Emplacement sélectionné",
+                name="Point sélectionné",
                 hoverinfo="text",
-                hovertext=f"Lat: {selected_location['lat']:.4f}, Lon: {selected_location['lon']:.4f}"
+                hovertext=f"Lat: {lat:.4f}, Lon: {lon:.4f}"
             ))
             
-            # Centrer la carte sur l'emplacement sélectionné avec un zoom adapté
-            fig.update_layout(
-                mapbox=dict(
-                    center=dict(lat=selected_location['lat'], lon=selected_location['lon']),
-                    zoom=4  # Zoom adapté à la visualisation de la zone
-                )
+            # Ajouter une annotation pour le rayon
+            fig.add_annotation(
+                text=f"Rayon: {radius_degrees}°",
+                x=lon, y=lat+radius_degrees/2,
+                showarrow=True,
+                arrowhead=1,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor="#0066ff",
+                xanchor="center",
+                yanchor="bottom"
             )
         
-        # Mise à jour du layout - avec un style similaire au graphique principal
-        fig.update_layout(
-            mapbox=dict(
-                style=actual_style,
-                center=dict(lat=20, lon=0) if not selected_location else dict(lat=selected_location['lat'], lon=selected_location['lon']),
-                zoom=1 if not selected_location else 4
-            ),
-            margin={"r":0,"t":0,"l":0,"b":0},
-            showlegend=True,
-            legend=dict(
-                title="Classes de météorites",
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="rgba(0, 0, 0, 0.2)",
-                borderwidth=1
-            ),
-            clickmode='event+select'  # Activer la sélection et les événements de clic
-        )
-        
+        debug_callback("Carte de prédiction générée avec succès")
         return fig
 
     def create_circle(center_lat, center_lon, radius_degrees, num_points=100):
@@ -682,28 +707,71 @@ def register_callbacks(app, data_path):
     
     @app.callback(
         Output('prediction-output', 'children'),
-        [Input('predict-button', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('pred-year', 'value'),
-         State('pred-fall', 'value')]
+        [Input('predict-button', 'n_clicks'),
+         Input('selected-location', 'data')],
+        [State('pred-year', 'value'),
+         State('pred-fall', 'value'),
+         State('analysis-radius', 'value')]
     )
-    def make_prediction(n_clicks, location, year, fall):
-        if n_clicks is None or location is None:
-            return ""
+    def make_prediction(n_clicks, location, year, fall, analysis_radius):
+        debug_callback("Lancement de la prédiction")
         
+        # Si aucun clic ou pas d'emplacement, retourner un message explicatif
+        if n_clicks is None or location is None:
+            # Si un emplacement est sélectionné mais pas encore de clic, afficher un message d'instruction
+            if location is not None:
+                return html.Div([
+                    html.H5("Prêt pour la prédiction", className="text-info"),
+                    html.P([
+                        "Un emplacement est sélectionné. ",
+                        html.Br(),
+                        "Ajustez les paramètres et cliquez sur ",
+                        html.B("Prédire"), 
+                        " pour calculer la probabilité d'impact et la masse estimée."
+                    ]),
+                    html.P([
+                        html.I(className="fas fa-map-marker-alt me-2 text-danger"),
+                        f"Coordonnées: Lat {location['lat']:.4f}, Lon {location['lon']:.4f}",
+                    ], className="mb-2"),
+                    html.P([
+                        html.I(className="fas fa-ruler me-2 text-primary"),
+                        f"Rayon d'analyse: {analysis_radius}°",
+                    ], className="mb-2")
+                ], className="alert alert-light border shadow-sm")
+            
+            # Message initial
+            return html.Div([
+                html.H5("Sélectionnez un point sur la carte", className="mb-3"),
+                html.P([
+                    html.I(className="fas fa-info-circle me-2"), 
+                    "Cliquez sur la carte pour sélectionner un emplacement avant de faire une prédiction."
+                ]),
+                html.P([
+                    html.I(className="fas fa-lightbulb me-2"), 
+                    "Vous pourrez ensuite ajuster les paramètres et utiliser le bouton ",
+                    html.B("Prédire"),
+                    " pour obtenir des estimations de masse et de probabilité d'impact."
+                ], className="text-muted")
+            ], className="alert alert-info")
+            
+        # Valider que les paramètres sont corrects
         if location is None:
+            debug_callback("Erreur: Point non sélectionné", level='error')
             return html.Div([
                 html.H5("Point non sélectionné", className="text-warning"),
                 html.P("Veuillez cliquer sur la carte pour sélectionner un emplacement.")
             ], className="alert alert-warning")
             
         if year is None or fall is None:
+            debug_callback("Erreur: Paramètres incomplets", level='error')
             return html.Div([
                 html.H5("Paramètres incomplets", className="text-warning"),
                 html.P("Veuillez spécifier l'année et le type de chute.")
             ], className="alert alert-warning")
             
         try:
+            debug_callback(f"Prédiction pour: Lat {location['lat']:.4f}, Lon {location['lon']:.4f}, Année {year}, Type {fall}")
+            
             # Vérifier que le modèle est correctement initialisé
             if ml_model is None:
                 raise ValueError("Le modèle de prédiction n'est pas initialisé.")
@@ -727,33 +795,154 @@ def register_callbacks(app, data_path):
             )
             
             # Formater la masse prédite
-            mass_formatted = f"{predicted_mass:.2f}" if predicted_mass < 1000 else f"{predicted_mass/1000:.2f}k"
+            if predicted_mass < 1000:
+                mass_formatted = f"{predicted_mass:.2f} grammes"
+            elif predicted_mass < 1000000:
+                mass_formatted = f"{predicted_mass/1000:.2f} kg"
+            else:
+                mass_formatted = f"{predicted_mass/1000000:.2f} tonnes"
+            
+            # Calculer une probabilité d'impact basée sur divers facteurs
+            # Récupérer des données historiques pour la zone
+            df = meteorite_data.get_filtered_data()
+            
+            # Facteur 1: Proximité des météorites connues
+            distances = np.sqrt(((df['reclat'] - location['lat']) ** 2) + ((df['reclong'] - location['lon']) ** 2))
+            closest_distance = distances.min()
+            proximity_factor = max(0.1, min(1.0, 1.0 / (closest_distance + 0.1)))  # Plus proche = plus probable
+            
+            # Facteur 2: Densité de météorites dans la zone (rayon d'analyse)
+            nearby_count = len(df[distances <= analysis_radius])
+            density_factor = min(1.0, nearby_count / 20.0)  # Normalisé: 20+ météorites = max
+            
+            # Facteur 3: Type de chute (Fell est plus rare mais plus précis)
+            fall_factor = 1.2 if fall == 'Fell' else 1.0
+            
+            # Facteur 4: Année (les prédictions pour des années plus éloignées sont moins fiables)
+            current_year = datetime.now().year
+            year_diff = abs(year - current_year)
+            time_factor = max(0.5, min(1.0, 1.0 - (year_diff / 100.0)))  # Facteur décroissant avec le temps
+            
+            # Calculer la probabilité finale (ajuster selon vos besoins)
+            base_probability = 0.01  # Probabilité de base très faible
+            impact_probability = base_probability * proximity_factor * density_factor * fall_factor * time_factor
+            impact_probability = min(0.95, impact_probability)  # Plafonner à 95% max
+            
+            # Calculer l'indice de confiance (0-100)
+            confidence_score = int((proximity_factor * 0.4 + density_factor * 0.4 + time_factor * 0.2) * 100)
+            confidence_class = "danger" if confidence_score < 30 else "warning" if confidence_score < 70 else "success"
+            
+            # Créer la visualisation de probabilité avec une jauge
+            probability_gauge = html.Div([
+                html.Div([
+                    html.Div(className="gauge-background"),
+                    html.Div(className="gauge-fill", style={"width": f"{impact_probability * 100}%"}),
+                    html.Div(className="gauge-cover", children=[
+                        html.Span(f"{impact_probability:.2%}", className="gauge-value")
+                    ])
+                ], className="gauge-container")
+            ], className="mt-3 mb-4")
+            
+            # Créer les facteurs explicatifs de la prédiction
+            factors_explanation = html.Div([
+                html.H6("Facteurs de prédiction", className="mt-3 mb-2"),
+                html.Div([
+                    html.Div([
+                        html.P("Proximité"),
+                        html.Div(className="progress", children=[
+                            html.Div(className="progress-bar bg-primary", 
+                                    style={"width": f"{proximity_factor * 100}%"},
+                                    children=f"{proximity_factor:.2f}")
+                        ])
+                    ], className="col-6 mb-2"),
+                    html.Div([
+                        html.P("Densité"),
+                        html.Div(className="progress", children=[
+                            html.Div(className="progress-bar bg-success", 
+                                    style={"width": f"{density_factor * 100}%"},
+                                    children=f"{density_factor:.2f}")
+                        ])
+                    ], className="col-6 mb-2"),
+                    html.Div([
+                        html.P("Temporel"),
+                        html.Div(className="progress", children=[
+                            html.Div(className="progress-bar bg-info", 
+                                    style={"width": f"{time_factor * 100}%"},
+                                    children=f"{time_factor:.2f}")
+                        ])
+                    ], className="col-6 mb-2"),
+                    html.Div([
+                        html.P("Type de chute"),
+                        html.Div(className="progress", children=[
+                            html.Div(className="progress-bar bg-secondary", 
+                                    style={"width": f"{fall_factor * 100 / 1.5}%"},
+                                    children=f"{fall_factor:.2f}")
+                        ])
+                    ], className="col-6 mb-2"),
+                ], className="row")
+            ])
+            
+            nearby_text = f"{nearby_count} météorites dans un rayon de {analysis_radius}°"
             
             return html.Div([
-                html.H5("Résultats de la prédiction:", className="mb-3 text-success"),
+                html.H5("Prédiction d'Impact de Météorite", className="mb-3 text-primary"),
+                
                 html.Div([
-                    html.Span("Masse prédite: ", className="fw-bold"),
-                    html.Span(f"{mass_formatted} grammes", 
-                             className="text-primary fs-5")
-                ], className="mb-2"),
+                    html.Div([
+                        html.H6("Probabilité d'impact", className="text-center mb-2"),
+                        probability_gauge,
+                        html.P([
+                            html.I(className="fas fa-info-circle me-2"), 
+                            "Indice de confiance: ",
+                            html.Span(f"{confidence_score}%", className=f"badge bg-{confidence_class} ms-1")
+                        ], className="text-center")
+                    ], className="col-md-6"),
+                    
+                    html.Div([
+                        html.H6("Masse Estimée", className="mb-2"),
+                        html.Div([
+                            html.Span(mass_formatted, 
+                                    className="d-block text-center display-6 text-success")
+                        ], className="p-3 border rounded text-center"),
+                        html.P([
+                            html.I(className="fas fa-meteor me-2"),
+                            nearby_text
+                        ], className="text-center mt-2 text-muted small")
+                    ], className="col-md-6")
+                ], className="row mb-3"),
+                
+                factors_explanation,
+                
+                html.Hr(),
+                
                 html.Div([
-                    html.Span("Localisation: ", className="fw-bold"),
-                    html.Br(),
-                    f"Latitude: {location['lat']:.4f}", html.Br(),
-                    f"Longitude: {location['lon']:.4f}"
-                ], className="text-muted small"),
-                html.Div([
-                    html.Span("Paramètres: ", className="fw-bold"),
-                    html.Br(),
-                    f"Année: {year}", html.Br(),
-                    f"Type de chute: {fall}"
-                ], className="text-muted small mt-2")
+                    html.P("Paramètres utilisés:", className="fw-bold"),
+                    html.Ul([
+                        html.Li([
+                            html.Span("Position: ", className="fw-bold"),
+                            f"Lat {location['lat']:.4f}, Lon {location['lon']:.4f}"
+                        ]),
+                        html.Li([
+                            html.Span("Année: ", className="fw-bold"),
+                            f"{year}"
+                        ]),
+                        html.Li([
+                            html.Span("Type: ", className="fw-bold"),
+                            f"{fall} ({'Tombée' if fall == 'Fell' else 'Trouvée'})"
+                        ]),
+                        html.Li([
+                            html.Span("Rayon d'analyse: ", className="fw-bold"),
+                            f"{analysis_radius}°"
+                        ])
+                    ], className="mb-0")
+                ], className="mt-3 small")
+                
             ], className="alert alert-light border shadow-sm")
+        
         except Exception as e:
             import traceback
             trace = traceback.format_exc()
-            print(f"Erreur dans make_prediction: {str(e)}")
-            print(trace)
+            debug_callback(f"Erreur dans make_prediction: {str(e)}", level='error')
             
             return html.Div([
                 html.H5("Erreur", className="text-danger"),
@@ -1741,41 +1930,672 @@ def register_callbacks(app, data_path):
             return fig
 
     @app.callback(
+        Output('reliability-index', 'children'),
+        [Input('selected-location', 'data')]
+    )
+    def update_reliability_index(location):
+        if location is None:
+            return "N/A"
+        
+        # Calculer un indice de fiabilité pour la localisation sélectionnée
+        # basé sur la proximité aux données connues
+        try:
+            lat, lon = location['lat'], location['lon']
+            df = meteorite_data.get_filtered_data()
+            
+            # Vérifier si le point est sur terre (approximatif)
+            # Ceci est une simplification, vous pourriez utiliser une méthode plus précise
+            is_on_land = True
+            # Pour une vérification géographique plus précise, vous pourriez utiliser:
+            # - Un shapefile de contours terrestres
+            # - Une API géographique
+            
+            # Calculer la distance aux météorites connues les plus proches
+            distances = np.sqrt(((df['reclat'] - lat) ** 2) + ((df['reclong'] - lon) ** 2))
+            closest_distance = distances.min()
+            
+            # Nombre de météorites dans un rayon de 5 degrés
+            nearby_count = len(df[(distances <= 5)])
+            
+            # Calculer l'indice de fiabilité (0-100)
+            reliability = 0
+            
+            # Facteur 1: Proximité des données (plus proche = plus fiable)
+            proximity_factor = max(0, 100 - (closest_distance * 10))
+            
+            # Facteur 2: Densité de données (plus de données = plus fiable)
+            density_factor = min(100, nearby_count * 2)
+            
+            # Facteur 3: Sur terre vs sur l'eau (sur terre = plus fiable car plus de données historiques)
+            land_factor = 100 if is_on_land else 50
+            
+            # Combiner les facteurs
+            reliability = int((proximity_factor * 0.4) + (density_factor * 0.4) + (land_factor * 0.2))
+            
+            # Retourner avec un style de couleur basé sur la fiabilité
+            color_class = "bg-danger" if reliability < 30 else "bg-warning" if reliability < 70 else "bg-success"
+            return html.Span(f"{reliability}%", className=f"badge {color_class}")
+            
+        except Exception as e:
+            print(f"Erreur dans update_reliability_index: {str(e)}")
+            return "Erreur"
+    
+    @app.callback(
+        [Output('temporal-prediction-output', 'children'),
+         Output('temporal-prediction-chart', 'children')],
+        [Input('btn-temporal-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('forecast-horizon', 'value'),
+         State('mass-prediction-range', 'value'),
+         State('analysis-radius', 'value')]
+    )
+    def update_temporal_prediction(n_clicks, location, horizon, mass_range, analysis_radius):
+        debug_callback("Mise à jour des prévisions temporelles")
+        
+        if n_clicks is None or location is None:
+            return html.Div([
+                html.H5("Sélectionnez un point et cliquez sur l'onglet", className="text-info"),
+                html.P([
+                    html.I(className="fas fa-info-circle me-2"), 
+                    "Pour obtenir des prévisions temporelles, veuillez d'abord:"
+                ]),
+                html.Ol([
+                    html.Li("Sélectionner un emplacement sur la carte"),
+                    html.Li("Ajuster les paramètres si nécessaire"),
+                    html.Li("Cliquer sur l'onglet 'Prévision Temporelle'")
+                ])
+            ], className="alert alert-info"), ""
+        
+        try:
+            # Extraire les paramètres
+            lat, lon = location['lat'], location['lon']
+            min_mass_log = mass_range[0]  # log10 scale
+            max_mass_log = mass_range[1]  # log10 scale
+            
+            # Convertir en grammes
+            min_mass = 10 ** min_mass_log
+            max_mass = 10 ** max_mass_log
+            
+            debug_callback(f"Génération de prévisions temporelles pour Lat:{lat}, Lon:{lon}, Horizon:{horizon} ans")
+            
+            # Obtenir les données historiques pour calibrer les prévisions
+            df = meteorite_data.get_filtered_data()
+            
+            # Calculer la densité historique dans la zone
+            distances = np.sqrt(((df['reclat'] - lat) ** 2) + ((df['reclong'] - lon) ** 2))
+            nearby_meteorites = df[distances <= analysis_radius]
+            nearby_count = len(nearby_meteorites)
+            
+            # Calculer les facteurs géographiques pour calibrer les prévisions
+            if nearby_count > 0:
+                # Calculer la masse moyenne des météorites à proximité
+                avg_mass = nearby_meteorites['mass (g)'].mean()
+                # Calculer la fréquence historique (météorites par année)
+                year_counts = nearby_meteorites['year'].value_counts().sort_index()
+                if len(year_counts) > 1:
+                    years_span = year_counts.index.max() - year_counts.index.min()
+                    frequency = len(nearby_meteorites) / max(1, years_span)
+                else:
+                    frequency = 0.01  # Valeur par défaut si peu de données
+            else:
+                avg_mass = df['mass (g)'].mean()  # Utiliser la moyenne globale
+                frequency = 0.001  # Très faible fréquence par défaut
+            
+            # Ajuster la fréquence avec l'indice de confiance (basé sur la proximité)
+            closest_distance = max(0.1, distances.min())
+            confidence_factor = max(0.1, min(1.0, 1.0 / (closest_distance + 0.1)))
+            adjusted_frequency = frequency * confidence_factor
+            
+            # Créer des données de prévision simulées
+            current_year = datetime.now().year
+            years = list(range(current_year, current_year + horizon + 1))
+            
+            # Probabilité de base calculée à partir des données historiques
+            # Une fréquence d'une météorite tous les 10 ans donne une probabilité annuelle de 0.1
+            base_probability = min(0.5, adjusted_frequency)  # Plafonner à 50% max par an
+            
+            # Facteurs par catégorie de masse
+            # Plus la masse est grande, plus la météorite est rare
+            small_mass_factor = 2.0    # Petites météorites (plus fréquentes)
+            medium_mass_factor = 1.0   # Masses moyennes
+            large_mass_factor = 0.2    # Grandes masses (plus rares)
+            
+            # Calculer les probabilités pour chaque année et catégorie de masse
+            # Avec une légère augmentation de probabilité au fil du temps
+            small_probs = []
+            medium_probs = []
+            large_probs = []
+            cumulative_small = 0
+            cumulative_medium = 0 
+            cumulative_large = 0
+            
+            for i, year in enumerate(years):
+                # Facteur temporel (légère augmentation avec le temps)
+                time_factor = 1 + (i * 0.02)
+                
+                # Probabilité pour l'année courante pour chaque catégorie
+                small_prob = min(0.95, base_probability * small_mass_factor * time_factor)
+                medium_prob = min(0.75, base_probability * medium_mass_factor * time_factor)
+                large_prob = min(0.25, base_probability * large_mass_factor * time_factor)
+                
+                # Probabilités cumulatives (chance qu'au moins une météorite tombe d'ici cette année)
+                if i == 0:
+                    cumulative_small = small_prob
+                    cumulative_medium = medium_prob
+                    cumulative_large = large_prob
+                else:
+                    # P(au moins un impact d'ici l'année N) = 1 - P(aucun impact sur N années)
+                    # = 1 - (1-p)^N où p est la probabilité annuelle
+                    cumulative_small = 1 - (1 - small_prob) * (1 - cumulative_small)
+                    cumulative_medium = 1 - (1 - medium_prob) * (1 - cumulative_medium)
+                    cumulative_large = 1 - (1 - large_prob) * (1 - cumulative_large)
+                
+                small_probs.append(cumulative_small)
+                medium_probs.append(cumulative_medium)
+                large_probs.append(cumulative_large)
+            
+            # Créer un graphique de prévision temporelle
+            fig = go.Figure()
+            
+            # Modifier les étiquettes des catégories en fonction de la plage de masses sélectionnée
+            mass_breaks = [min_mass, min_mass * 100, min_mass * 10000, max_mass]
+            
+            fig.add_trace(go.Scatter(
+                x=years,
+                y=small_probs,
+                mode='lines+markers',
+                name=f'{mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g',
+                line=dict(color='#5470c6', width=2),
+                marker=dict(size=8, symbol='circle')
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=years,
+                y=medium_probs,
+                mode='lines+markers',
+                name=f'{mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g',
+                line=dict(color='#91cc75', width=2),
+                marker=dict(size=8, symbol='diamond')
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=years,
+                y=large_probs,
+                mode='lines+markers',
+                name=f'{mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g',
+                line=dict(color='#ee6666', width=2),
+                marker=dict(size=8, symbol='square')
+            ))
+            
+            # Ligne de probabilité à 50%
+            fig.add_shape(
+                type="line",
+                x0=years[0],
+                y0=0.5,
+                x1=years[-1],
+                y1=0.5,
+                line=dict(
+                    color="rgba(0, 0, 0, 0.5)",
+                    width=1,
+                    dash="dash",
+                ),
+            )
+            
+            # Ajouter une annotation pour la ligne de 50%
+            fig.add_annotation(
+                x=years[0] + 1,
+                y=0.5,
+                text="Probabilité 50%",
+                showarrow=False,
+                yshift=10,
+                font=dict(size=10, color="rgba(0, 0, 0, 0.5)")
+            )
+            
+            fig.update_layout(
+                title="Probabilité cumulative d'impact de météorite",
+                xaxis_title="Année",
+                yaxis_title="Probabilité",
+                yaxis=dict(
+                    tickformat='.0%',
+                    range=[0, 1]
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5
+                ),
+                height=400,
+                margin=dict(l=40, r=30, t=50, b=40),
+                hovermode="x unified",
+                plot_bgcolor='rgba(240, 240, 240, 0.3)',  # Fond légèrement grisé
+                hoverlabel=dict(
+                    bgcolor="white",
+                    font_size=12
+                )
+            )
+            
+            # Ajouter des annotations explicatives sur le graphique
+            fig.add_annotation(
+                x=years[-1],
+                y=small_probs[-1],
+                text=f"{small_probs[-1]:.0%}",
+                showarrow=True,
+                arrowhead=1,
+                ax=20,
+                ay=-30
+            )
+            
+            fig.add_annotation(
+                x=years[-1],
+                y=medium_probs[-1],
+                text=f"{medium_probs[-1]:.0%}",
+                showarrow=True,
+                arrowhead=1,
+                ax=20,
+                ay=30
+            )
+            
+            # Identifier les années clés où les probabilités dépassent certains seuils
+            small_threshold_year = next((years[i] for i, p in enumerate(small_probs) if p >= 0.5), None)
+            medium_threshold_year = next((years[i] for i, p in enumerate(medium_probs) if p >= 0.5), None)
+            large_threshold_year = next((years[i] for i, p in enumerate(large_probs) if p >= 0.5), None)
+            
+            # Trouver combien de météorites on attend sur la période entière
+            # E(nombre) = somme des probabilités annuelles (non cumulatives)
+            expected_small = sum([min(0.95, base_probability * small_mass_factor * (1 + (i * 0.02))) for i in range(horizon)])
+            expected_medium = sum([min(0.75, base_probability * medium_mass_factor * (1 + (i * 0.02))) for i in range(horizon)])
+            expected_large = sum([min(0.25, base_probability * large_mass_factor * (1 + (i * 0.02))) for i in range(horizon)])
+            
+            # Créer un résumé textuel des prévisions
+            summary = html.Div([
+                html.Div([
+                    html.Div([
+                        html.H6("Résumé de Prévision", className="card-header bg-primary text-white"),
+                        html.Div([
+                            html.P([
+                                "La prévision est basée sur l'analyse de ",
+                                html.Strong(f"{nearby_count} météorites"),
+                                f" dans un rayon de {analysis_radius}° autour du point sélectionné."
+                            ]),
+                            html.Hr(),
+                            html.Div([
+                                html.H6("Probabilités cumulatives d'impact d'ici 2030:"),
+                                html.Div([
+                                    html.Div(className="d-flex justify-content-between", children=[
+                                        html.Span(f"Petites ({mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g)"),
+                                        html.Span(f"{small_probs[min(len(small_probs)-1, 10)]:.0%}", className="badge bg-primary")
+                                    ]),
+                                    html.Div(className="progress mt-1", children=[
+                                        html.Div(className="progress-bar bg-primary", 
+                                                style={"width": f"{small_probs[min(len(small_probs)-1, 10)] * 100}%"})
+                                    ])
+                                ], className="mb-2"),
+                                html.Div([
+                                    html.Div(className="d-flex justify-content-between", children=[
+                                        html.Span(f"Moyennes ({mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g)"),
+                                        html.Span(f"{medium_probs[min(len(medium_probs)-1, 10)]:.0%}", className="badge bg-success")
+                                    ]),
+                                    html.Div(className="progress mt-1", children=[
+                                        html.Div(className="progress-bar bg-success", 
+                                                style={"width": f"{medium_probs[min(len(medium_probs)-1, 10)] * 100}%"})
+                                    ])
+                                ], className="mb-2"),
+                                html.Div([
+                                    html.Div(className="d-flex justify-content-between", children=[
+                                        html.Span(f"Grandes ({mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g)"),
+                                        html.Span(f"{large_probs[min(len(large_probs)-1, 10)]:.0%}", className="badge bg-danger")
+                                    ]),
+                                    html.Div(className="progress mt-1", children=[
+                                        html.Div(className="progress-bar bg-danger", 
+                                                style={"width": f"{large_probs[min(len(large_probs)-1, 10)] * 100}%"})
+                                    ])
+                                ])
+                            ])
+                        ], className="mb-3"),
+                        
+                        html.Hr(),
+                        
+                        html.Div([
+                            html.H6("Années seuil (probabilité ≥ 50%):"),
+                            html.Ul([
+                                html.Li([
+                                    f"Petites météorites: ",
+                                    html.Strong(f"{small_threshold_year}" if small_threshold_year else "Au-delà de l'horizon")
+                                ]),
+                                html.Li([
+                                    f"Moyennes météorites: ",
+                                    html.Strong(f"{medium_threshold_year}" if medium_threshold_year else "Au-delà de l'horizon")
+                                ]),
+                                html.Li([
+                                    f"Grandes météorites: ",
+                                    html.Strong(f"{large_threshold_year}" if large_threshold_year else "Au-delà de l'horizon")
+                                ])
+                            ])
+                        ], className="mb-3"),
+                        
+                        html.Hr(),
+                        
+                        html.Div([
+                            html.H6(f"Nombre attendu de météorites sur {horizon} ans:"),
+                            html.Ul([
+                                html.Li([
+                                    f"Petites: ",
+                                    html.Strong(f"{expected_small:.1f}")
+                                ]),
+                                html.Li([
+                                    f"Moyennes: ",
+                                    html.Strong(f"{expected_medium:.1f}")
+                                ]),
+                                html.Li([
+                                    f"Grandes: ",
+                                    html.Strong(f"{expected_large:.1f}")
+                                ])
+                            ])
+                        ])
+                    ], className="card-body")
+                ], className="card mb-3")
+            ])
+            
+            # Créer le graphique
+            graph = dcc.Graph(
+                figure=fig,
+                config={
+                    'displayModeBar': True,
+                    'modeBarButtonsToRemove': ['autoScale2d', 'lasso2d', 'select2d'],
+                    'toImageButtonOptions': {
+                        'format': 'png',
+                        'filename': 'meteorite_temporal_forecast',
+                        'scale': 2
+                    }
+                }
+            )
+            
+            debug_callback("Prévisions temporelles générées avec succès")
+            return summary, graph
+            
+        except Exception as e:
+            import traceback
+            trace = traceback.format_exc()
+            debug_callback(f"Erreur dans update_temporal_prediction: {str(e)}", level='error')
+            
+            error_msg = html.Div([
+                html.H5("Erreur de prévision", className="text-danger"),
+                html.P(f"Une erreur s'est produite lors de la génération des prévisions temporelles: {str(e)}"),
+                html.Details([
+                    html.Summary("Détails techniques (cliquez pour développer)"),
+                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
+                ], className="mt-2")
+            ], className="alert alert-danger")
+            
+            return error_msg, ""
+    
+    @app.callback(
+        [Output('spatial-prediction-output', 'children'),
+         Output('spatial-heatmap', 'children')],
+        [Input('btn-spatial-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('analysis-radius', 'value'),
+         State('detection-sensitivity', 'value')]
+    )
+    def update_spatial_prediction(n_clicks, location, radius, sensitivity):
+        if n_clicks is None or location is None:
+            return "", ""
+        
+        try:
+            # Extraire les paramètres
+            lat, lon = location['lat'], location['lon']
+            
+            # Préparer les données pour la heatmap
+            # Dans un cas réel, vous utiliseriez un modèle géospatial
+            
+            # Créer une grille pour la carte de chaleur
+            lat_range = np.linspace(lat - radius, lat + radius, 50)
+            lon_range = np.linspace(lon - radius, lon + radius, 50)
+            
+            # Créer une grille 2D pour les latitudes et longitudes
+            lat_grid, lon_grid = np.meshgrid(lat_range, lon_range)
+            
+            # Aplatir pour les visualisations
+            lats_flat = lat_grid.flatten()
+            lons_flat = lon_grid.flatten()
+            
+            # Récupérer les données historiques
+            df = meteorite_data.get_filtered_data()
+            
+            # Calculer la probabilité basée sur la distance aux météorites connues
+            probabilities = []
+            
+            for grid_lat, grid_lon in zip(lats_flat, lons_flat):
+                # Calculer la distance à toutes les météorites connues
+                distances = np.sqrt(((df['reclat'] - grid_lat) ** 2) + ((df['reclong'] - grid_lon) ** 2))
+                
+                # Facteur d'influence ajusté par la sensibilité (0-100)
+                influence_factor = (sensitivity / 100) * 5  # 0.05 à 5
+                
+                # Calculer la probabilité en fonction des distances aux météorites les plus proches
+                # Plus les météorites connues sont proches, plus la probabilité est élevée
+                weights = np.exp(-distances * influence_factor)
+                probability = min(1.0, np.sum(weights) / 50)  # normaliser à 1.0 max
+                
+                probabilities.append(probability)
+            
+            # Créer un DataFrame pour la visualisation
+            heatmap_df = pd.DataFrame({
+                'lat': lats_flat,
+                'lon': lons_flat,
+                'probability': probabilities
+            })
+            
+            # Créer la carte de densité
+            fig = px.density_mapbox(
+                heatmap_df, 
+                lat='lat', 
+                lon='lon', 
+                z='probability',
+                radius=20,
+                zoom=8,
+                center=dict(lat=lat, lon=lon),
+                mapbox_style='carto-positron',
+                opacity=0.8,
+                labels={'probability': 'Probabilité'},
+                range_color=[0, 1]
+            )
+            
+            # Ajouter un marqueur pour le point sélectionné
+            fig.add_trace(go.Scattermapbox(
+                lat=[lat],
+                lon=[lon],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color='#ff9500',
+                    symbol='marker'
+                ),
+                name="Emplacement sélectionné",
+                hoverinfo="text",
+                hovertext=f"Lat: {lat:.4f}, Lon: {lon:.4f}"
+            ))
+            
+            # Améliorer la mise en page
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=500,
+                coloraxis_colorbar=dict(
+                    title="Probabilité",
+                    tickvals=[0, 0.25, 0.5, 0.75, 1],
+                    ticktext=["0%", "25%", "50%", "75%", "100%"]
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            # Trouver le point de probabilité maximale
+            max_prob_idx = np.argmax(probabilities)
+            max_prob_lat = lats_flat[max_prob_idx]
+            max_prob_lon = lons_flat[max_prob_idx]
+            max_prob = probabilities[max_prob_idx]
+            
+            # Déterminer si le point sélectionné est dans une zone de données suffisantes
+            avg_prob = np.mean(probabilities)
+            point_prob = heatmap_df[(heatmap_df['lat'] == lat) & (heatmap_df['lon'] == lon)]['probability'].values[0] if not heatmap_df[(heatmap_df['lat'] == lat) & (heatmap_df['lon'] == lon)].empty else 0
+            
+            # Vérifier sommairement si on est sur l'eau (simplification)
+            is_on_water = False  # Dans un cas réel, utilisez une API géographique
+            
+            # Créer un résumé textuel
+            summary = html.Div([
+                html.H6("Analyse de probabilité spatiale", className="mt-3 mb-2"),
+                html.P([
+                    "Coordonnées du point: ",
+                    html.Span(f"Lat {lat:.4f}, Lon {lon:.4f}", className="fw-bold")
+                ]),
+                html.P([
+                    "Rayon d'analyse: ",
+                    html.Span(f"{radius}°", className="fw-bold")
+                ]),
+                html.P([
+                    "Probabilité au point sélectionné: ",
+                    html.Span(f"{point_prob:.2%}", className="fw-bold text-primary")
+                ]),
+                html.P([
+                    "Point de probabilité maximale: ",
+                    html.Span(f"Lat {max_prob_lat:.4f}, Lon {max_prob_lon:.4f} ({max_prob:.2%})", className="fw-bold")
+                ]),
+                html.P([
+                    "Probabilité moyenne dans la zone: ",
+                    html.Span(f"{avg_prob:.2%}", className="fw-bold")
+                ]),
+                
+                # Avertissement pour les zones marines
+                html.Div([
+                    html.P([
+                        html.I(className="fas fa-info-circle me-2"),
+                        "Note: Les probabilités en zones marines sont sous-représentées car historiquement moins de météorites y sont recensées (biais de découverte)."
+                    ], className="mb-0")
+                ], className="alert alert-info mt-3", style={'display': 'block' if is_on_water else 'none'})
+            ])
+            
+            # Créer le graphique
+            graph = dcc.Graph(
+                figure=fig,
+                config={
+                    'displayModeBar': True,
+                    'modeBarButtonsToRemove': ['autoScale2d', 'lasso2d', 'select2d'],
+                    'toImageButtonOptions': {
+                        'format': 'png',
+                        'filename': 'spatial_probability',
+                        'scale': 2
+                    }
+                }
+            )
+            
+            return summary, graph
+            
+        except Exception as e:
+            import traceback
+            trace = traceback.format_exc()
+            print(f"Erreur dans update_spatial_prediction: {str(e)}")
+            print(trace)
+            
+            error_msg = html.Div([
+                html.H5("Erreur d'analyse spatiale", className="text-danger"),
+                html.P(f"Une erreur s'est produite lors de la génération de la carte de probabilité: {str(e)}"),
+                html.Details([
+                    html.Summary("Détails techniques (cliquez pour développer)"),
+                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
+                ], className="mt-2")
+            ], className="alert alert-danger")
+            
+            return error_msg, ""
+    
+    # Ajouter le support pour afficher les panels temporels et spatiaux
+    @app.callback(
         [Output('prediction-results-content', 'style'),
          Output('zone-analysis-content', 'style'),
+         Output('temporal-prediction-content', 'style'),
+         Output('spatial-prediction-content', 'style'),
          Output('btn-prediction-results', 'className'),
-         Output('btn-zone-analysis', 'className')],
+         Output('btn-zone-analysis', 'className'),
+         Output('btn-temporal-prediction', 'className'),
+         Output('btn-spatial-prediction', 'className')],
         [Input('btn-prediction-results', 'n_clicks'),
-         Input('btn-zone-analysis', 'n_clicks')]
+         Input('btn-zone-analysis', 'n_clicks'),
+         Input('btn-temporal-prediction', 'n_clicks'),
+         Input('btn-spatial-prediction', 'n_clicks')],
+        [State('prediction-results-content', 'style'),
+         State('zone-analysis-content', 'style'),
+         State('temporal-prediction-content', 'style'),
+         State('spatial-prediction-content', 'style'),
+         State('btn-prediction-results', 'className'),
+         State('btn-zone-analysis', 'className'),
+         State('btn-temporal-prediction', 'className'),
+         State('btn-spatial-prediction', 'className')]
     )
-    def toggle_prediction_views(pred_clicks, zone_clicks):
-        # Par défaut, le panneau de prédiction est affiché
-        pred_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-        zone_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-        pred_class = 'btn btn-primary me-2'  # Active par défaut
-        zone_class = 'btn btn-outline-primary'
-        
-        # Détecter le bouton cliqué
+    def toggle_prediction_views(pred_clicks, zone_clicks, temporal_clicks, spatial_clicks,
+                              pred_style, zone_style, temporal_style, spatial_style,
+                              pred_btn_class, zone_btn_class, temporal_btn_class, spatial_btn_class):
+        # Déterminer quel bouton a été cliqué en dernier
         ctx = dash.callback_context
+        
         if not ctx.triggered:
-            return pred_style, zone_style, pred_class, zone_class
+            # Par défaut, montrer le panneau de prédiction
+            pred_display = {'min-height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            zone_display = {'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            temporal_display = {'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            spatial_display = {'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
             
+            pred_btn = "btn btn-primary me-2"
+            zone_btn = "btn btn-outline-primary me-2"
+            temporal_btn = "btn btn-outline-primary me-2"
+            spatial_btn = "btn btn-outline-primary"
+            
+            return pred_display, zone_display, temporal_display, spatial_display, pred_btn, zone_btn, temporal_btn, spatial_btn
+        
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
+        # Styles de base
+        base_style = {'min-height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+        hidden_style = {'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+        
+        # Classes de boutons
+        active_btn = "btn btn-primary me-2"
+        inactive_btn = "btn btn-outline-primary me-2"
+        inactive_btn_last = "btn btn-outline-primary"
+        
+        # Initialiser tous les styles à caché
+        pred_display = dict(hidden_style)
+        zone_display = dict(hidden_style)
+        temporal_display = dict(hidden_style)
+        spatial_display = dict(hidden_style)
+        
+        # Initialiser toutes les classes de boutons à inactif
+        pred_btn = inactive_btn
+        zone_btn = inactive_btn
+        temporal_btn = inactive_btn
+        spatial_btn = inactive_btn_last
+        
+        # Définir le style actif en fonction du bouton cliqué
         if button_id == 'btn-prediction-results':
-            # Afficher le panneau de prédiction
-            pred_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-            zone_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-            pred_class = 'btn btn-primary me-2'
-            zone_class = 'btn btn-outline-primary'
-        else:
-            # Afficher le panneau d'analyse de zone
-            pred_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-            zone_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-            pred_class = 'btn btn-outline-primary me-2'
-            zone_class = 'btn btn-primary'
-            
-        return pred_style, zone_style, pred_class, zone_class
+            pred_display = dict(base_style)
+            pred_btn = active_btn
+        elif button_id == 'btn-zone-analysis':
+            zone_display = dict(base_style)
+            zone_btn = active_btn
+        elif button_id == 'btn-temporal-prediction':
+            temporal_display = dict(base_style)
+            temporal_btn = active_btn
+        elif button_id == 'btn-spatial-prediction':
+            spatial_display = dict(base_style)
+            spatial_btn = active_btn.replace(" me-2", "")  # Pas de marge pour le dernier
+        
+        return pred_display, zone_display, temporal_display, spatial_display, pred_btn, zone_btn, temporal_btn, spatial_btn
 
     @app.callback(
         [Output('distribution-map-content', 'style'),
@@ -1812,3 +2632,29 @@ def register_callbacks(app, data_path):
                 'btn btn-outline-primary me-2',
                 'btn btn-primary'
             )
+
+    # Callback pour activer/désactiver le mode debug
+    @app.callback(
+        Output('debug-container', 'style'),
+        [Input('toggle-debug', 'n_clicks')],
+        [State('debug-container', 'style')]
+    )
+    def toggle_debug_mode(n_clicks, current_style):
+        if n_clicks is None:
+            return current_style
+        
+        if n_clicks % 2 == 1:  # Impair = montrer
+            return {'display': 'block', 'position': 'fixed', 'bottom': '0', 'left': '0', 'right': '0', 
+                   'max-height': '200px', 'overflow': 'auto', 'z-index': '1000', 'opacity': '0.9'}
+        else:  # Pair = cacher
+            return {'display': 'none'}
+
+    # Callback pour afficher les messages de debug dans l'interface
+    @app.callback(
+        Output('debug-output', 'children'),
+        [Input('debug-data', 'data')]
+    )
+    def update_debug_output(debug_data):
+        if not debug_data:
+            return ""
+        return html.Pre(debug_data, className="debug-text")

@@ -8,10 +8,11 @@ from sklearn.metrics import mean_squared_error, accuracy_score
 import joblib
 
 class MeteoriteML:
-    def __init__(self, data_path):
-        self.data = pd.read_csv(data_path)
+    def __init__(self, data):
+        self.data = data
         self.le = LabelEncoder()
-        self.scaler = StandardScaler()
+        self.mass_scaler = StandardScaler()  # Scaler spécifique pour la prédiction de masse
+        self.class_scaler = StandardScaler()  # Scaler spécifique pour la classification
         self.mass_predictor = RandomForestRegressor(n_estimators=100, random_state=42)
         self.class_predictor = RandomForestClassifier(n_estimators=100, random_state=42)
         self.location_clusters = KMeans(n_clusters=5, random_state=42)
@@ -40,8 +41,8 @@ class MeteoriteML:
         y = np.log1p(self.data['mass (g)'])  # Log transform pour normaliser
         
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
+        X_train_scaled = self.mass_scaler.fit_transform(X_train)  # Utiliser mass_scaler
+        X_test_scaled = self.mass_scaler.transform(X_test)
         
         # Entraînement du modèle
         self.mass_predictor.fit(X_train_scaled, y_train)
@@ -69,12 +70,12 @@ class MeteoriteML:
             features = np.array([[lat, lon, year, fall_encoded]])
             
             # Vérifier qu'il existe des données pour la normalisation
-            if not hasattr(self.scaler, 'mean_') or not hasattr(self.mass_predictor, 'feature_importances_'):
+            if not hasattr(self.mass_scaler, 'mean_') or not hasattr(self.mass_predictor, 'feature_importances_'):
                 # Si le modèle n'est pas encore entraîné, le faire maintenant
                 self.train_mass_predictor()
                 
-            # Normalisation des features
-            features_scaled = self.scaler.transform(features)
+            # Normalisation des features avec le mass_scaler
+            features_scaled = self.mass_scaler.transform(features)
             
             # Prédiction
             mass_pred = self.mass_predictor.predict(features_scaled)
@@ -104,8 +105,8 @@ class MeteoriteML:
         y = self.data['recclass']
         
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
+        X_train_scaled = self.class_scaler.fit_transform(X_train)  # Utiliser class_scaler
+        X_test_scaled = self.class_scaler.transform(X_test)
         
         # Entraînement du classificateur
         self.class_predictor.fit(X_train_scaled, y_train)
@@ -128,5 +129,6 @@ class MeteoriteML:
         # Sauvegarde des modèles entraînés
         joblib.dump(self.mass_predictor, f'{path_prefix}mass_predictor.joblib')
         joblib.dump(self.class_predictor, f'{path_prefix}class_predictor.joblib')
-        joblib.dump(self.scaler, f'{path_prefix}scaler.joblib')
+        joblib.dump(self.mass_scaler, f'{path_prefix}mass_scaler.joblib')
+        joblib.dump(self.class_scaler, f'{path_prefix}class_scaler.joblib')
         joblib.dump(self.le, f'{path_prefix}label_encoder.joblib') 

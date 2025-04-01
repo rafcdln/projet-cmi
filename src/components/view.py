@@ -666,27 +666,34 @@ def create_layout():
                                                     className="form-select"
                                                 )
                                             ], className="mb-2"),
-                                        ], className="d-flex flex-wrap"),
+                                        ], className="d-flex flex-wrap mb-3"),
+                                        
+                                        # Boutons d'action déplacés ici pour être plus proches des paramètres
+                                        html.Div([
+                                            html.Button([
+                                                html.I(className="fas fa-magic me-2"),
+                                                "Prédire"
+                                            ], id='predict-button', n_clicks=0, 
+                                            className='btn btn-success me-2'),
+                                            html.Button([
+                                                html.I(className="fas fa-search-location me-2"),
+                                                "Analyser la zone"
+                                            ], id='analyze-zone-button', n_clicks=0, 
+                                            className='btn btn-primary me-2'),
+                                        ], className='d-flex'),
                                     ], className="col-md-6"),
                                 ], className='row mt-3'),
                                 
+                                # Indicateur de fiabilité
                                 html.Div([
-                                    html.Button([
-                                        html.I(className="fas fa-search-location me-2"),
-                                        "Analyser la zone"
-                                    ], id='analyze-zone-button', n_clicks=0, 
-                                       className='btn btn-primary me-2'),
-                                    html.Button([
-                                        html.I(className="fas fa-magic me-2"),
-                                        "Prédire"
-                                    ], id='predict-button', n_clicks=0, 
-                                       className='btn btn-success me-2'),
-                                    html.Button([
-                                        html.I(className="fas fa-map me-2"),
-                                        "Sélectionner comme zone"
-                                    ], id='select-zone-button', n_clicks=0, 
-                                       className='btn btn-outline-primary')
-                                ], className='d-flex mt-2 mb-3'),
+                                    html.Div([
+                                        html.P([
+                                            html.I(className="fas fa-info-circle me-2 text-primary"),
+                                            html.Span("Indice de fiabilité: ", className="fw-bold"),
+                                            html.Span(id='reliability-index', className="badge bg-secondary")
+                                        ], className="mt-2 mb-0")
+                                    ], className="col-12"),
+                                ], className="row mt-1"),
                             ], className='col-12 mb-4'),  # Carte en pleine largeur
                             
                             # Panneau d'analyse étendu
@@ -710,12 +717,12 @@ def create_layout():
                                             className="btn btn-outline-primary me-2"
                                         ),
                                         html.Button(
-                                            [html.I(className="fas fa-calendar me-2"), "Prévision Temporelle"],
+                                            [html.I(className="fas fa-calendar-alt me-2"), "Prévision Temporelle"],
                                             id='btn-temporal-prediction',
                                             className="btn btn-outline-primary me-2"
                                         ),
                                         html.Button(
-                                            [html.I(className="fas fa-globe me-2"), "Probabilité Spatiale"],
+                                            [html.I(className="fas fa-globe-americas me-2"), "Probabilité Spatiale"],
                                             id='btn-spatial-prediction',
                                             className="btn btn-outline-primary"
                                         ),
@@ -742,7 +749,12 @@ def create_layout():
                                         dcc.Loading(
                                             id="loading-temporal",
                                             type="circle",
-                                            children=html.Div(id='temporal-prediction-output', className='p-3')
+                                            children=html.Div([
+                                                html.H5("Prévisions temporelles", className="mb-3"),
+                                                html.P("Cette visualisation montre la probabilité d'impact de météorites dans le temps pour l'emplacement sélectionné."),
+                                                html.Div(id='temporal-prediction-chart', className='mt-3'),
+                                                html.Div(id='temporal-prediction-output', className='mt-3')
+                                            ], className='p-3')
                                         )
                                     ], id='temporal-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
                                     
@@ -750,7 +762,12 @@ def create_layout():
                                         dcc.Loading(
                                             id="loading-spatial",
                                             type="circle",
-                                            children=html.Div(id='spatial-prediction-output', className='p-3')
+                                            children=html.Div([
+                                                html.H5("Carte de probabilité spatiale", className="mb-3"),
+                                                html.P("Cette carte montre la densité de probabilité d'impact de météorites dans la région environnante."),
+                                                html.Div(id='spatial-heatmap', className='mt-3'),
+                                                html.Div(id='spatial-prediction-output', className='mt-3')
+                                            ], className='p-3')
                                         )
                                     ], id='spatial-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
                                 ]),
@@ -778,28 +795,34 @@ def create_layout():
                                                 )
                                             ], className="mb-3"),
                                             
-                                            html.Label("Saison", className="form-label"),
-                                            dcc.Dropdown(
-                                                id='season-filter',
-                                                options=[
-                                                    {'label': 'Toutes saisons', 'value': 'all'},
-                                                    {'label': 'Printemps', 'value': 'spring'},
-                                                    {'label': 'Été', 'value': 'summer'},
-                                                    {'label': 'Automne', 'value': 'autumn'},
-                                                    {'label': 'Hiver', 'value': 'winter'}
-                                                ],
-                                                value='all',
-                                                clearable=False,
-                                                className="form-select mb-3"
-                                            ),
+                                            html.Label("Plage de masses à prévoir", className="form-label"),
+                                            html.Div([
+                                                dcc.RangeSlider(
+                                                    id='mass-prediction-range',
+                                                    min=0,
+                                                    max=6,
+                                                    step=0.5,
+                                                    value=[1, 4],
+                                                    marks={
+                                                        0: '1g', 
+                                                        1: '10g', 
+                                                        2: '100g', 
+                                                        3: '1kg', 
+                                                        4: '10kg',
+                                                        5: '100kg',
+                                                        6: '1T+'
+                                                    },
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                )
+                                            ], className="mb-3"),
                                         ], className="col-md-6"),
                                         
                                         # Colonne 2: Paramètres spatiaux
                                         html.Div([
-                                            html.Label("Rayon de la zone (degrés)", className="form-label"),
+                                            html.Label("Rayon d'analyse (degrés)", className="form-label"),
                                             html.Div([
                                                 dcc.Slider(
-                                                    id='zone-radius',
+                                                    id='analysis-radius',
                                                     min=0.5,
                                                     max=10,
                                                     step=0.5,
@@ -809,39 +832,21 @@ def create_layout():
                                                 )
                                             ], className="mb-3"),
                                             
-                                            html.Label("Modèle de prédiction", className="form-label"),
-                                            dcc.Dropdown(
-                                                id='prediction-model',
-                                                options=[
-                                                    {'label': 'Régression linéaire', 'value': 'linear'},
-                                                    {'label': 'Random Forest', 'value': 'rf'},
-                                                    {'label': 'Gradient Boosting', 'value': 'gbm'},
-                                                    {'label': 'Réseau de neurones', 'value': 'nn'}
-                                                ],
-                                                value='rf',
-                                                clearable=False,
-                                                className="form-select mb-3"
-                                            ),
+                                            html.Label("Sensibilité de détection", className="form-label"),
+                                            html.Div([
+                                                dcc.Slider(
+                                                    id='detection-sensitivity',
+                                                    min=0,
+                                                    max=100,
+                                                    step=5,
+                                                    value=50,
+                                                    marks={0: 'Min', 50: 'Mod', 100: 'Max'},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                )
+                                            ], className="mb-3"),
                                         ], className="col-md-6"),
-                                    ], className="row")
-                                ], className="mt-2"),
-                                
-                                # Importance des variables
-                                html.Div([
-                                    html.H6([
-                                        html.I(className="fas fa-weight-hanging me-2"),
-                                        "Importance des Caractéristiques"
-                                    ], className='mt-4 mb-2'),
-                                    dcc.Loading(
-                                        id="loading-importance",
-                                        type="circle",
-                                        children=dcc.Graph(
-                                            id='feature-importance-2',
-                                            config={'displayModeBar': False},
-                                            style={'height': '300px'}
-                                        )
-                                    )
-                                ], className="mt-3")
+                                    ], className="row"),
+                                ]),
                             ], className='col-12'),  # Panneau d'analyse en pleine largeur
                         ], className='row card-body'),
                     ], className='card h-100 shadow-sm')
@@ -853,7 +858,14 @@ def create_layout():
         # Footer
         html.Footer([
             html.Div([
-                html.P('Dashboard Météorites © 2023', className='mb-0')
+                html.P([
+                    'Dashboard Météorites © 2023 ',
+                    html.Button([
+                        html.I(className="fas fa-bug me-1"),
+                        "Debug"
+                    ], id="toggle-debug", className="btn btn-sm btn-outline-secondary ms-2", 
+                       style={"fontSize": "0.8rem", "padding": "2px 5px"})
+                ], className='mb-0')
             ], className='text-center py-3')
         ], className='mt-4 bg-light rounded-bottom'),
         
@@ -872,23 +884,10 @@ def create_layout():
             dcc.Store(id='debug-data', storage_type='memory', data='')  # Pour stocker les messages de debug
         ], style={'display': 'none'}),
         
-        # CSS personnalisé dans un style dict
-        html.Div(style={
-            '.custom-tabs': {
-                'border-bottom': '1px solid #e0e0e0'
-            },
-            '.custom-tab': {
-                'color': '#495057',
-                'padding': '10px 15px',
-                'border-radius': '0',
-                'border-width': '0'
-            },
-            '.custom-tab--selected': {
-                'color': '#007bff',
-                'border-bottom': '2px solid #007bff',
-                'font-weight': '500'
-            }
-        }),
+        # Conteneur pour les messages de debug (caché par défaut, peut être affiché en mode développement)
+        html.Div([
+            html.Div(id='debug-output', className='p-2 bg-dark text-light small')
+        ], id='debug-container', style={'display': 'none', 'position': 'fixed', 'bottom': '0', 'left': '0', 'right': '0', 'max-height': '200px', 'overflow': 'auto', 'z-index': '1000'}),
         
         # Tooltips pour tous les paramètres
         dbc.Tooltip(

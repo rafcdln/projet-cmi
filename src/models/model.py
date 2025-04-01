@@ -5,74 +5,94 @@ import traceback
 
 class MeteoriteData:
     def __init__(self, data_path):
-        try:
-            self.df = pd.read_csv(data_path)
-            self._clean_data()
-            print(f"Données chargées avec succès: {len(self.df)} météorites")
-        except Exception as e:
-            print(f"ERREUR lors du chargement des données: {str(e)}")
-            print(traceback.format_exc())
-            # Initialiser un dataframe vide en cas d'erreur
-            self.df = pd.DataFrame()
+        print("Chargement des données depuis:", data_path)
+        self.data = pd.read_csv(data_path)
+        self._clean_data()
+        self._prepare_data()
+        print(f"Données chargées avec succès: {len(self.data)} météorites")
         
     def _clean_data(self):
+        """Nettoyer les données de base"""
+        # Convertir des colonnes en numérique
+        self.data['mass (g)'] = pd.to_numeric(self.data['mass (g)'], errors='coerce')
+        self.data['year'] = pd.to_numeric(self.data['year'], errors='coerce')
+        
+        # Supprimer les points avec latitude = 0 ET longitude = 0 (erreurs de données)
+        invalid_coords = (self.data['reclat'] == 0) & (self.data['reclong'] == 0)
+        if invalid_coords.any():
+            print(f"Suppression de {invalid_coords.sum()} météorites avec coordonnées (0,0) invalides")
+            self.data = self.data[~invalid_coords]
+        
+        # Supprimer les lignes avec des valeurs manquantes dans les colonnes essentielles
+        initial_count = len(self.data)
+        self.data = self.data.dropna(subset=['reclat', 'reclong', 'mass (g)'])
+        dropped_count = initial_count - len(self.data)
+        if dropped_count > 0:
+            print(f"Suppression de {dropped_count} météorites avec des valeurs manquantes")
+        
+        # Correction des masses nulles ou négatives
+        mask_invalid_mass = self.data['mass (g)'] <= 0
+        if mask_invalid_mass.any():
+            print(f"Correction de {mask_invalid_mass.sum()} masses invalides (≤0)")
+            min_valid_mass = self.data[self.data['mass (g)'] > 0]['mass (g)'].min()
+            self.data.loc[mask_invalid_mass, 'mass (g)'] = min_valid_mass
+            print(f"Masse minimale après correction: {min_valid_mass}g")
+        
+    def _prepare_data(self):
         try:
-            # Nettoyage numérique des années
-            self.df['year'] = pd.to_numeric(self.df['year'], errors='coerce')
-            
             # Éliminer les lignes avec des coordonnées manquantes (essentielles pour la carte)
-            self.df = self.df.dropna(subset=['reclat', 'reclong'])
+            self.data = self.data.dropna(subset=['reclat', 'reclong'])
             
             # Filtrer les années aberrantes
             current_year = datetime.now().year
-            self.df = self.df[(self.df['year'].isna()) | self.df['year'].between(1000, current_year, inclusive='both')]
+            self.data = self.data[(self.data['year'].isna()) | self.data['year'].between(1000, current_year, inclusive='both')]
             
             # Nettoyage des masses et conversion en numérique
-            self.df['mass (g)'] = pd.to_numeric(self.df['mass (g)'], errors='coerce')
+            self.data['mass (g)'] = pd.to_numeric(self.data['mass (g)'], errors='coerce')
             
             # Remplacer les valeurs NaN de masse par la moyenne (pour éviter les pertes de données)
-            median_mass = self.df['mass (g)'].median()
-            self.df['mass (g)'].fillna(median_mass, inplace=True)
+            median_mass = self.data['mass (g)'].median()
+            self.data['mass (g)'].fillna(median_mass, inplace=True)
             
             # CORRECTION IMPORTANTE: S'assurer que les valeurs de masse sont > 0 pour permettre le log
             # Remplacer toutes les valeurs ≤ 0 par 1 gramme comme valeur minimum
-            self.df['mass (g)'] = self.df['mass (g)'].apply(lambda x: max(float(x), 1.0))
+            self.data['mass (g)'] = self.data['mass (g)'].apply(lambda x: max(float(x), 1.0))
             
             # NOUVELLE COLONNE: Créer une colonne 'adjusted_mass' qui garantit des valeurs positives
-            self.df['adjusted_mass'] = self.df['mass (g)']
+            self.data['adjusted_mass'] = self.data['mass (g)']
             
             # Maintenant on peut calculer le log en toute sécurité
-            self.df['log_mass'] = np.log10(self.df['adjusted_mass'])
+            self.data['log_mass'] = np.log10(self.data['adjusted_mass'])
             
             # Vérification des valeurs problématiques (pour le débogage)
-            problematic_mass = self.df[self.df['mass (g)'] <= 0]
+            problematic_mass = self.data[self.data['mass (g)'] <= 0]
             if not problematic_mass.empty:
                 print(f"ATTENTION: {len(problematic_mass)} valeurs de masse problématiques ont été corrigées")
             
             # Vérification du résultat
-            min_mass = self.df['mass (g)'].min()
+            min_mass = self.data['mass (g)'].min()
             print(f"Masse minimale après correction: {min_mass}g")
             
             # Convertir les années en int pour éviter les problèmes avec les filtres
             # après avoir traité les NaN
-            self.df['year'] = self.df['year'].fillna(0).astype(int)
+            self.data['year'] = self.data['year'].fillna(0).astype(int)
             
             # Création des intervalles temporels (décennies)
-            self.df['decade'] = (self.df['year'] // 10) * 10
+            self.data['decade'] = (self.data['year'] // 10) * 10
             
             # Nettoyer les valeurs de fall (Fell/Found)
-            self.df['fall'] = self.df['fall'].fillna('Unknown')
+            self.data['fall'] = self.data['fall'].fillna('Unknown')
             
             # Nettoyer les valeurs de classe
-            self.df['recclass'] = self.df['recclass'].fillna('Unknown')
+            self.data['recclass'] = self.data['recclass'].fillna('Unknown')
             
         except Exception as e:
-            print(f"ERREUR lors du nettoyage des données: {str(e)}")
+            print(f"ERREUR lors de la préparation des données: {str(e)}")
             print(traceback.format_exc())
         
     def get_filtered_data(self, mass_range=None, classification=None, fall_type=None, decade_range=None):
         try:
-            filtered = self.df.copy()
+            filtered = self.data.copy()
             
             # Filtre par plage de masse (en exposant log10)
             if mass_range:
