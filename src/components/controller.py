@@ -2384,6 +2384,17 @@ def register_callbacks(app, data_path):
     def update_temporal_prediction(n_clicks, location, horizon, mass_range, analysis_radius):
         debug_callback("Mise à jour des prévisions temporelles")
         
+        # Initialiser les variables de seuil à None pour les rendre accessibles dans toute la fonction
+        small_threshold_year_25 = None
+        small_threshold_year_50 = None
+        small_threshold_year_75 = None
+        medium_threshold_year_25 = None
+        medium_threshold_year_50 = None
+        medium_threshold_year_75 = None
+        large_threshold_year_25 = None
+        large_threshold_year_50 = None
+        large_threshold_year_75 = None
+        
         if n_clicks is None or location is None:
             return html.Div([
                 html.H5("Sélectionnez un point et cliquez sur l'onglet", className="text-info"),
@@ -2492,107 +2503,236 @@ def register_callbacks(app, data_path):
             # Modifier les étiquettes des catégories en fonction de la plage de masses sélectionnée
             mass_breaks = [min_mass, min_mass * 100, min_mass * 10000, max_mass]
             
+            # Ajouter des zones colorées pour les différents niveaux de probabilité
+            fig.add_shape(
+                type="rect",
+                x0=years[0],
+                y0=0.75,
+                x1=years[-1],
+                y1=1.0,
+                fillcolor="rgba(255, 0, 0, 0.1)",
+                line_width=0,
+                layer="below"
+            )
+            
+            fig.add_shape(
+                type="rect",
+                x0=years[0],
+                y0=0.5,
+                x1=years[-1],
+                y1=0.75,
+                fillcolor="rgba(255, 165, 0, 0.1)",
+                line_width=0,
+                layer="below"
+            )
+            
+            fig.add_shape(
+                type="rect",
+                x0=years[0],
+                y0=0.25,
+                x1=years[-1],
+                y1=0.5,
+                fillcolor="rgba(255, 255, 0, 0.1)",
+                line_width=0,
+                layer="below"
+            )
+            
+            # Ajouter les annotations pour les zones de probabilité
+            fig.add_annotation(
+                x=years[0] + 1,
+                y=0.875,
+                text="Très probable",
+                showarrow=False,
+                font=dict(size=10, color="rgba(180, 0, 0, 0.7)")
+            )
+            
+            fig.add_annotation(
+                x=years[0] + 1,
+                y=0.625,
+                text="Probable",
+                showarrow=False,
+                font=dict(size=10, color="rgba(180, 120, 0, 0.7)")
+            )
+            
+            fig.add_annotation(
+                x=years[0] + 1,
+                y=0.375,
+                text="Possible",
+                showarrow=False,
+                font=dict(size=10, color="rgba(120, 120, 0, 0.7)")
+            )
+            
+            # Ajouter les lignes de probabilité pour les seuils importants
+            for threshold in [0.25, 0.5, 0.75]:
+                fig.add_shape(
+                    type="line",
+                    x0=years[0],
+                    y0=threshold,
+                    x1=years[-1],
+                    y1=threshold,
+                    line=dict(
+                        color="rgba(0, 0, 0, 0.3)",
+                        width=1,
+                        dash="dash",
+                    ),
+                )
+            
+            # Tracer les courbes de probabilité
             fig.add_trace(go.Scatter(
                 x=years,
                 y=small_probs,
                 mode='lines+markers',
-                name=f'{mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g',
-                line=dict(color='#5470c6', width=2),
-                marker=dict(size=8, symbol='circle')
+                name=f'Petite masse<br>{mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g',
+                line=dict(color='#5470c6', width=3),
+                marker=dict(size=8, symbol='circle'),
+                hovertemplate='Année %{x}<br>Probabilité: %{y:.1%}<extra></extra>'
             ))
             
             fig.add_trace(go.Scatter(
                 x=years,
                 y=medium_probs,
                 mode='lines+markers',
-                name=f'{mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g',
-                line=dict(color='#91cc75', width=2),
-                marker=dict(size=8, symbol='diamond')
+                name=f'Masse moyenne<br>{mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g',
+                line=dict(color='#91cc75', width=3),
+                marker=dict(size=8, symbol='diamond'),
+                hovertemplate='Année %{x}<br>Probabilité: %{y:.1%}<extra></extra>'
             ))
             
             fig.add_trace(go.Scatter(
                 x=years,
                 y=large_probs,
                 mode='lines+markers',
-                name=f'{mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g',
-                line=dict(color='#ee6666', width=2),
-                marker=dict(size=8, symbol='square')
+                name=f'Grande masse<br>{mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g',
+                line=dict(color='#ee6666', width=3),
+                marker=dict(size=8, symbol='square'),
+                hovertemplate='Année %{x}<br>Probabilité: %{y:.1%}<extra></extra>'
             ))
             
-            # Ligne de probabilité à 50%
-            fig.add_shape(
-                type="line",
-                x0=years[0],
-                y0=0.5,
-                x1=years[-1],
-                y1=0.5,
-                line=dict(
-                    color="rgba(0, 0, 0, 0.5)",
-                    width=1,
-                    dash="dash",
-                ),
-            )
+            # Identifier les années clés où les probabilités dépassent certains seuils
+            small_threshold_year_25 = next((years[i] for i, p in enumerate(small_probs) if p >= 0.25), None)
+            small_threshold_year_50 = next((years[i] for i, p in enumerate(small_probs) if p >= 0.5), None)
+            small_threshold_year_75 = next((years[i] for i, p in enumerate(small_probs) if p >= 0.75), None)
             
-            # Ajouter une annotation pour la ligne de 50%
-            fig.add_annotation(
-                x=years[0] + 1,
-                y=0.5,
-                text="Probabilité 50%",
-                showarrow=False,
-                yshift=10,
-                font=dict(size=10, color="rgba(0, 0, 0, 0.5)")
-            )
+            medium_threshold_year_25 = next((years[i] for i, p in enumerate(medium_probs) if p >= 0.25), None)
+            medium_threshold_year_50 = next((years[i] for i, p in enumerate(medium_probs) if p >= 0.5), None)
+            medium_threshold_year_75 = next((years[i] for i, p in enumerate(medium_probs) if p >= 0.75), None)
             
+            large_threshold_year_25 = next((years[i] for i, p in enumerate(large_probs) if p >= 0.25), None)
+            large_threshold_year_50 = next((years[i] for i, p in enumerate(large_probs) if p >= 0.5), None)
+            large_threshold_year_75 = next((years[i] for i, p in enumerate(large_probs) if p >= 0.75), None)
+            
+            # Ajouter des marques verticales pour les années clés
+            if small_threshold_year_50:
+                fig.add_shape(
+                    type="line",
+                    x0=small_threshold_year_50,
+                    y0=0,
+                    x1=small_threshold_year_50,
+                    y1=0.5,
+                    line=dict(
+                        color="#5470c6",
+                        width=2,
+                        dash="dot",
+                    ),
+                )
+                fig.add_annotation(
+                    x=small_threshold_year_50,
+                    y=0.05,
+                    text=f"50% en {small_threshold_year_50}",
+                    showarrow=False,
+                    font=dict(size=10, color="#5470c6"),
+                    textangle=90
+                )
+            
+            if medium_threshold_year_50:
+                fig.add_shape(
+                    type="line",
+                    x0=medium_threshold_year_50,
+                    y0=0,
+                    x1=medium_threshold_year_50,
+                    y1=0.5,
+                    line=dict(
+                        color="#91cc75",
+                        width=2,
+                        dash="dot",
+                    ),
+                )
+                fig.add_annotation(
+                    x=medium_threshold_year_50,
+                    y=0.05,
+                    text=f"50% en {medium_threshold_year_50}",
+                    showarrow=False,
+                    font=dict(size=10, color="#91cc75"),
+                    textangle=90
+                )
+            
+            # Ajouter les annotations pour les probabilités finales
+            for i, (probs, color, offset, name) in enumerate([
+                (small_probs, '#5470c6', -40, "Petite"),
+                (medium_probs, '#91cc75', 0, "Moyenne"),
+                (large_probs, '#ee6666', 40, "Grande")
+            ]):
+                prob_final = probs[-1]
+                fig.add_annotation(
+                    x=years[-1],
+                    y=prob_final,
+                    text=f"{prob_final:.0%}",
+                    showarrow=True,
+                    arrowhead=1,
+                    ax=30,
+                    ay=offset,
+                    font=dict(size=12, color=color),
+                    bgcolor="rgba(255, 255, 255, 0.8)",
+                    bordercolor=color,
+                    borderwidth=2,
+                    borderpad=4,
+                    arrowwidth=2,
+                )
+            
+            # Configurer la mise en page
             fig.update_layout(
-                title="Probabilité cumulative d'impact de météorite",
+                title={
+                    'text': "Probabilité cumulative d'impact de météorite au fil du temps",
+                    'y':0.95,
+                    'x':0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top',
+                    'font': dict(size=18)
+                },
                 xaxis_title="Année",
-                yaxis_title="Probabilité",
+                yaxis_title="Probabilité cumulative",
                 yaxis=dict(
                     tickformat='.0%',
-                    range=[0, 1]
+                    range=[0, 1],
+                    gridcolor='rgba(0,0,0,0.1)',
+                    zeroline=False
+                ),
+                xaxis=dict(
+                    gridcolor='rgba(0,0,0,0.1)',
+                    zeroline=False
                 ),
                 legend=dict(
                     orientation="h",
                     yanchor="top",
                     y=-0.15,
                     xanchor="center",
-                    x=0.5
+                    x=0.5,
+                    bgcolor="rgba(255, 255, 255, 0.8)",
+                    bordercolor="rgba(0, 0, 0, 0.2)",
+                    borderwidth=1
                 ),
-                height=400,
-                margin=dict(l=40, r=30, t=50, b=80),  # Augmenter la marge du bas pour la légende
+                height=500,  # Plus grand pour une meilleure lisibilité
+                margin=dict(l=50, r=50, t=80, b=100),  # Marge ajustée
                 hovermode="x unified",
-                plot_bgcolor='rgba(240, 240, 240, 0.3)',  # Fond légèrement grisé
+                plot_bgcolor='rgba(245, 245, 245, 0.95)',
+                paper_bgcolor='white',
                 hoverlabel=dict(
                     bgcolor="white",
-                    font_size=12
-                )
+                    font_size=12,
+                    bordercolor="black"
+                ),
+                showlegend=True
             )
-            
-            # Ajouter des annotations explicatives sur le graphique
-            fig.add_annotation(
-                x=years[-1],
-                y=small_probs[-1],
-                text=f"{small_probs[-1]:.0%}",
-                showarrow=True,
-                arrowhead=1,
-                ax=20,
-                ay=-30
-            )
-            
-            fig.add_annotation(
-                x=years[-1],
-                y=medium_probs[-1],
-                text=f"{medium_probs[-1]:.0%}",
-                showarrow=True,
-                arrowhead=1,
-                ax=20,
-                ay=30
-            )
-            
-            # Identifier les années clés où les probabilités dépassent certains seuils
-            small_threshold_year = next((years[i] for i, p in enumerate(small_probs) if p >= 0.5), None)
-            medium_threshold_year = next((years[i] for i, p in enumerate(medium_probs) if p >= 0.5), None)
-            large_threshold_year = next((years[i] for i, p in enumerate(large_probs) if p >= 0.5), None)
             
             # Trouver combien de météorites on attend sur la période entière
             # E(nombre) = somme des probabilités annuelles (non cumulatives)
@@ -2604,124 +2744,203 @@ def register_callbacks(app, data_path):
             summary = html.Div([
                 html.Div([
                     html.Div([
-                        html.H6("Résumé de Prévision", className="card-header bg-primary text-white"),
+                        html.H5("Résumé de Prévision Temporelle", className="card-header bg-primary text-white py-2"),
                         html.Div([
                             html.P([
-                                "La prévision est basée sur l'analyse de ",
+                                "Analyse basée sur ",
                                 html.Strong(f"{nearby_count} météorites"),
                                 f" dans un rayon de {analysis_radius}° autour du point sélectionné."
-                            ]),
-                            html.Hr(),
+                            ], className="mb-2"),
+                            
                             html.Div([
-                                html.H6("Probabilités cumulatives d'impact d'ici 2030:"),
-                                html.Div([
-                                    html.Div(className="d-flex justify-content-between", children=[
-                                        html.Span(f"Petites ({mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g)"),
-                                        html.Span(f"{small_probs[min(len(small_probs)-1, 10)]:.0%}", className="badge bg-primary")
-                                    ]),
-                                    html.Div(className="progress mt-1", children=[
-                                        html.Div(className="progress-bar bg-primary", 
-                                                style={"width": f"{small_probs[min(len(small_probs)-1, 10)] * 100}%"})
+                                html.H6("Probabilités finales après {0} ans (en {1}):".format(
+                                    horizon, datetime.now().year + horizon)),
+                                
+                                # Tableau des probabilités
+                                html.Table(className="table table-bordered table-sm", children=[
+                                    html.Thead(html.Tr([
+                                        html.Th("Catégorie de Masse"),
+                                        html.Th("D'ici 2025"),
+                                        html.Th("D'ici 2030"),
+                                        html.Th("D'ici 2035"),
+                                        html.Th(f"D'ici {years[-1]}")
+                                    ])),
+                                    html.Tbody([
+                                        html.Tr([
+                                            html.Td([
+                                                f"Petite masse ",
+                                                html.Br(),
+                                                html.Small(f"{mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g")
+                                            ]),
+                                            html.Td(
+                                                f"{small_probs[min(5, len(small_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if small_probs[min(5, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(5, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(5, len(small_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{small_probs[min(10, len(small_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if small_probs[min(10, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(10, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(10, len(small_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{small_probs[min(15, len(small_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if small_probs[min(15, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(15, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(15, len(small_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{small_probs[-1]:.0%}",
+                                                className=f"{'table-danger' if small_probs[-1] >= 0.75 else 'table-warning' if small_probs[-1] >= 0.5 else 'table-info' if small_probs[-1] >= 0.25 else ''}"
+                                            )
+                                        ]),
+                                        html.Tr([
+                                            html.Td([
+                                                f"Masse moyenne ",
+                                                html.Br(),
+                                                html.Small(f"{mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g")
+                                            ]),
+                                            html.Td(
+                                                f"{medium_probs[min(5, len(medium_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[min(5, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(5, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(5, len(medium_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{medium_probs[min(10, len(medium_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[min(10, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(10, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(10, len(medium_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{medium_probs[min(15, len(medium_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[min(15, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(15, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(15, len(medium_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{medium_probs[-1]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[-1] >= 0.75 else 'table-warning' if medium_probs[-1] >= 0.5 else 'table-info' if medium_probs[-1] >= 0.25 else ''}"
+                                            )
+                                        ]),
+                                        html.Tr([
+                                            html.Td([
+                                                f"Grande masse ",
+                                                html.Br(),
+                                                html.Small(f"{mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g")
+                                            ]),
+                                            html.Td(
+                                                f"{large_probs[min(5, len(large_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if large_probs[min(5, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(5, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(5, len(large_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{large_probs[min(10, len(large_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if large_probs[min(10, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(10, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(10, len(large_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{large_probs[min(15, len(large_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if large_probs[min(15, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(15, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(15, len(large_probs)-1)] >= 0.25 else ''}"
+                                            ),
+                                            html.Td(
+                                                f"{large_probs[-1]:.0%}",
+                                                className=f"{'table-danger' if large_probs[-1] >= 0.75 else 'table-warning' if large_probs[-1] >= 0.5 else 'table-info' if large_probs[-1] >= 0.25 else ''}"
+                                            )
+                                        ])
                                     ])
-                                ], className="mb-2"),
+                                ]),
+                                
                                 html.Div([
-                                    html.Div(className="d-flex justify-content-between", children=[
-                                        html.Span(f"Moyennes ({mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g)"),
-                                        html.Span(f"{medium_probs[min(len(medium_probs)-1, 10)]:.0%}", className="badge bg-success")
-                                    ]),
-                                    html.Div(className="progress mt-1", children=[
-                                        html.Div(className="progress-bar bg-success", 
-                                                style={"width": f"{medium_probs[min(len(medium_probs)-1, 10)] * 100}%"})
-                                    ])
-                                ], className="mb-2"),
+                                    html.H6("Années clés:"),
+                                    html.Div([
+                                        html.Div([
+                                            html.Strong("Petite masse:"),
+                                            html.Ul([
+                                                html.Li(f"25% de probabilité: {small_threshold_year_25 if small_threshold_year_25 else 'Après ' + str(years[-1])}", 
+                                                       className="text-info"),
+                                                html.Li(f"50% de probabilité: {small_threshold_year_50 if small_threshold_year_50 else 'Après ' + str(years[-1])}", 
+                                                       className="text-warning"),
+                                                html.Li(f"75% de probabilité: {small_threshold_year_75 if small_threshold_year_75 else 'Après ' + str(years[-1])}", 
+                                                       className="text-danger")
+                                            ])
+                                        ], className="col-md-4"),
+                                        html.Div([
+                                            html.Strong("Masse moyenne:"),
+                                            html.Ul([
+                                                html.Li(f"25% de probabilité: {medium_threshold_year_25 if medium_threshold_year_25 else 'Après ' + str(years[-1])}", 
+                                                       className="text-info"),
+                                                html.Li(f"50% de probabilité: {medium_threshold_year_50 if medium_threshold_year_50 else 'Après ' + str(years[-1])}", 
+                                                       className="text-warning"),
+                                                html.Li(f"75% de probabilité: {medium_threshold_year_75 if medium_threshold_year_75 else 'Après ' + str(years[-1])}", 
+                                                       className="text-danger")
+                                            ])
+                                        ], className="col-md-4"),
+                                        html.Div([
+                                            html.Strong("Grande masse:"),
+                                            html.Ul([
+                                                html.Li(f"25% de probabilité: {large_threshold_year_25 if large_threshold_year_25 else 'Après ' + str(years[-1])}", 
+                                                       className="text-info"),
+                                                html.Li(f"50% de probabilité: {large_threshold_year_50 if large_threshold_year_50 else 'Après ' + str(years[-1])}", 
+                                                       className="text-warning"),
+                                                html.Li(f"75% de probabilité: {large_threshold_year_75 if large_threshold_year_75 else 'Après ' + str(years[-1])}", 
+                                                       className="text-danger")
+                                            ])
+                                        ], className="col-md-4")
+                                    ], className="row")
+                                ], className="mt-3"),
+                                
                                 html.Div([
-                                    html.Div(className="d-flex justify-content-between", children=[
-                                        html.Span(f"Grandes ({mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g)"),
-                                        html.Span(f"{large_probs[min(len(large_probs)-1, 10)]:.0%}", className="badge bg-danger")
+                                    html.H6("Prévisions d'impacts:"),
+                                    html.P([
+                                        f"Sur la période de {horizon} ans, on peut s'attendre à:"
                                     ]),
-                                    html.Div(className="progress mt-1", children=[
-                                        html.Div(className="progress-bar bg-danger", 
-                                                style={"width": f"{large_probs[min(len(large_probs)-1, 10)] * 100}%"})
+                                    html.Ul([
+                                        html.Li([
+                                            f"Petites météorites: ",
+                                            html.Strong(f"{expected_small:.1f} impacts", className="text-primary")
+                                        ]),
+                                        html.Li([
+                                            f"Météorites moyennes: ",
+                                            html.Strong(f"{expected_medium:.1f} impacts", className="text-success")
+                                        ]),
+                                        html.Li([
+                                            f"Grandes météorites: ",
+                                            html.Strong(f"{expected_large:.1f} impacts", className="text-danger")
+                                        ])
                                     ])
-                                ])
+                                ], className="mt-3")
+                            ], className="card-body")
+                        ]),
+                    ], className="card mb-3"),
+                    
+                    html.Div([
+                        html.P([
+                            html.I(className="fas fa-info-circle me-2"),
+                            "Comment interpréter ce graphique:"
+                        ], className="fw-bold"),
+                        html.Ul([
+                            html.Li([
+                                "Les courbes montrent la probabilité cumulative qu'au moins une météorite de chaque catégorie de masse tombe dans la zone sélectionnée avant chaque année."
+                            ]),
+                            html.Li([
+                                "Les zones colorées représentent les niveaux de probabilité: ",
+                                html.Span("possible (25-50%)", className="text-info"), ", ",
+                                html.Span("probable (50-75%)", className="text-warning"), ", ",
+                                html.Span("très probable (>75%)", className="text-danger")
+                            ]),
+                            html.Li([
+                                "Ces prévisions sont basées sur un modèle probabiliste alimenté par les données historiques."
                             ])
-                        ], className="mb-3"),
-                        
-                        html.Hr(),
-                        
-                        html.Div([
-                            html.H6("Années seuil (probabilité ≥ 50%):"),
-                            html.Ul([
-                                html.Li([
-                                    f"Petites météorites: ",
-                                    html.Strong(f"{small_threshold_year}" if small_threshold_year else "Au-delà de l'horizon")
-                                ]),
-                                html.Li([
-                                    f"Moyennes météorites: ",
-                                    html.Strong(f"{medium_threshold_year}" if medium_threshold_year else "Au-delà de l'horizon")
-                                ]),
-                                html.Li([
-                                    f"Grandes météorites: ",
-                                    html.Strong(f"{large_threshold_year}" if large_threshold_year else "Au-delà de l'horizon")
-                                ])
-                            ])
-                        ], className="mb-3"),
-                        
-                        html.Hr(),
-                        
-                        html.Div([
-                            html.H6(f"Nombre attendu de météorites sur {horizon} ans:"),
-                            html.Ul([
-                                html.Li([
-                                    f"Petites: ",
-                                    html.Strong(f"{expected_small:.1f}")
-                                ]),
-                                html.Li([
-                                    f"Moyennes: ",
-                                    html.Strong(f"{expected_medium:.1f}")
-                                ]),
-                                html.Li([
-                                    f"Grandes: ",
-                                    html.Strong(f"{expected_large:.1f}")
-                                ])
-                            ])
-                        ])
-                    ], className="card-body")
-                ], className="card mb-3")
+                        ], className="small")
+                    ], className="alert alert-light small border")
+                ])
             ])
             
-            # Créer le graphique
-            graph = dcc.Graph(
-                figure=fig,
-                config={
-                    'displayModeBar': True,
-                    'modeBarButtonsToRemove': ['autoScale2d', 'lasso2d', 'select2d'],
-                    'toImageButtonOptions': {
-                        'format': 'png',
-                        'filename': 'meteorite_temporal_forecast',
-                        'scale': 2
-                    }
-                }
-            )
-            
-            debug_callback("Prévisions temporelles générées avec succès")
-            return summary, graph
+            # Retourner le résumé et le graphique
+            return summary, html.Div([
+                dcc.Graph(figure=fig, className="border rounded shadow-sm"),
+            ])
             
         except Exception as e:
-            import traceback
-            trace = traceback.format_exc()
-            debug_callback(f"Erreur dans update_temporal_prediction: {str(e)}", level='error')
-            
-            error_msg = html.Div([
-                html.H5("Erreur de prévision", className="text-danger"),
-                html.P(f"Une erreur s'est produite lors de la génération des prévisions temporelles: {str(e)}"),
+            return html.Div([
+                html.Div([
+                    html.I(className="fas fa-exclamation-triangle me-2"),
+                    "Erreur de prévision"
+                ], className="alert alert-danger"),
+                html.P("Une erreur s'est produite lors de la génération des prévisions temporelles: " + str(e)),
                 html.Details([
                     html.Summary("Détails techniques (cliquez pour développer)"),
-                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
-                ], className="mt-2")
-            ], className="alert alert-danger")
-            
-            return error_msg, ""
+                    html.Pre(traceback.format_exc(), className="bg-light p-3 small")
+                ])
+            ]), ""
         
     # Fonction pour calculer le score de confiance
     def calculate_confidence_score(location, horizon, radius, complexity, env_factor, hist_weight):
@@ -3321,3 +3540,241 @@ def register_callbacks(app, data_path):
             spatial_btn = active_btn.replace(" me-2", "")  # Pas de marge pour le dernier
         
         return pred_display, zone_display, temporal_display, spatial_display, pred_btn, zone_btn, temporal_btn, spatial_btn
+
+    @app.callback(
+        Output('spatial-prediction-output', 'children'),
+        [Input('btn-spatial-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('analysis-radius', 'value')]
+    )
+    def update_spatial_prediction(n_clicks, location, analysis_radius):
+        debug_callback("Mise à jour des prévisions spatiales")
+        
+        if n_clicks is None or location is None:
+            return html.Div([
+                html.H5("Sélectionnez un point et cliquez sur l'onglet", className="text-info"),
+                html.P([
+                    html.I(className="fas fa-info-circle me-2"), 
+                    "Pour obtenir une carte des probabilités spatiales, veuillez d'abord:"
+                ]),
+                html.Ol([
+                    html.Li("Sélectionner un emplacement sur la carte"),
+                    html.Li("Ajuster les paramètres si nécessaire"),
+                    html.Li("Cliquer sur l'onglet 'Probabilité Spatiale'")
+                ])
+            ], className="alert alert-info")
+        
+        try:
+            # Extraire les paramètres
+            lat, lon = location['lat'], location['lon']
+            
+            # Obtenir les données historiques pour calibrer la carte
+            df = meteorite_data.get_filtered_data()
+            
+            # Créer un cercle de points autour de l'emplacement sélectionné
+            center_lat, center_lon = lat, lon
+            radius = analysis_radius  # en degrés
+            
+            # Créer une grille dense de points pour une carte plus fluide
+            grid_size = 80  # résolution de la grille (nombre de points par côté)
+            grid_step = radius * 2 / grid_size
+            
+            grid_points = []
+            for i in range(grid_size + 1):
+                for j in range(grid_size + 1):
+                    grid_lat = center_lat - radius + i * grid_step
+                    grid_lon = center_lon - radius + j * grid_step
+                    
+                    # Calculer la distance au centre
+                    distance = np.sqrt((grid_lat - center_lat)**2 + (grid_lon - center_lon)**2)
+                    
+                    if distance <= radius:
+                        # Calculer la probabilité pour ce point
+                        nearby_distances = np.sqrt(((df['reclat'] - grid_lat) ** 2) + ((df['reclong'] - grid_lon) ** 2))
+                        nearby_count = sum(nearby_distances <= radius / 3)  # Rayon plus petit pour l'analyse locale
+                        
+                        # Calculer la densité historique
+                        area = np.pi * (radius/3)**2  # Aire en degrés carrés
+                        density = nearby_count / area if area > 0 else 0
+                        
+                        # Modèle simple: plus la densité historique est élevée, plus la probabilité est élevée
+                        # Normaliser sur une échelle de 0 à 1
+                        max_density = 5  # densité maximale attendue (météorites par degré carré)
+                        probability = min(0.95, density / max_density)
+                        
+                        # Ajustement: décroissance avec la distance au centre
+                        distance_factor = 1 - (distance / radius) * 0.3  # 0.3 = amplitude de l'effet distance
+                        
+                        # Probabilité finale
+                        final_probability = probability * distance_factor
+                        
+                        grid_points.append({
+                            'lat': grid_lat,
+                            'lon': grid_lon,
+                            'probability': final_probability,
+                            'nearby_count': nearby_count
+                        })
+            
+            # Créer dataframe pour la visualisation
+            grid_df = pd.DataFrame(grid_points)
+            
+            # Créer une carte de chaleur de probabilité
+            fig = go.Figure()
+            
+            # Ajouter une couche de heatmap pour les probabilités (avec une densité élevée pour fluidité)
+            fig.add_densitymapbox(
+                lat=grid_df['lat'],
+                lon=grid_df['lon'],
+                z=grid_df['probability'],
+                radius=12,  # Rayon plus large pour créer des zones continues
+                colorscale='Viridis',
+                opacity=0.8,
+                zmin=0,
+                zmax=1,
+                hoverinfo='none',
+                showscale=True,
+                colorbar=dict(
+                    title="Probabilité",
+                    tickformat=".0%",
+                    thickness=15,
+                    len=0.9,
+                    y=0.5,
+                    yanchor="middle"
+                )
+            )
+            
+            # Ajouter le centre (point sélectionné)
+            fig.add_trace(go.Scattermapbox(
+                lat=[center_lat],
+                lon=[center_lon],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color='red',
+                    symbol='star'
+                ),
+                text=f"Point sélectionné<br>Lat: {center_lat:.4f}, Lon: {center_lon:.4f}",
+                hoverinfo='text',
+                name='Point sélectionné'
+            ))
+            
+            # Ajouter une couche semi-transparente des météorites connues
+            fig.add_trace(go.Scattermapbox(
+                lat=df[df['reclat'].notna()]['reclat'],
+                lon=df[df['reclong'].notna()]['reclong'],
+                mode='markers',
+                marker=dict(
+                    size=4,
+                    color='rgba(255, 255, 255, 0.7)',
+                    symbol='circle'
+                ),
+                text=df.apply(
+                    lambda row: f"{row['name']}<br>" +
+                              f"Masse: {row['mass (g)']:.1f}g<br>" +
+                              f"Année: {int(row['year']) if pd.notna(row['year']) else 'Inconnue'}<br>" +
+                              f"Classe: {row['recclass']}",
+                    axis=1
+                ),
+                hoverinfo='text',
+                name='Météorites historiques'
+            ))
+            
+            # Ajouter un cercle délimitant la zone d'analyse
+            circle_lats, circle_lons = [], []
+            for angle in np.linspace(0, 2*np.pi, 100):
+                circle_lats.append(center_lat + np.sin(angle) * radius)
+                circle_lons.append(center_lon + np.cos(angle) * radius)
+            
+            fig.add_trace(go.Scattermapbox(
+                lat=circle_lats,
+                lon=circle_lons,
+                mode='lines',
+                line=dict(
+                    width=2,
+                    color='rgba(255, 255, 255, 0.7)'
+                ),
+                hoverinfo='none',
+                name='Zone d\'analyse'
+            ))
+            
+            # Configuration de la carte
+            fig.update_layout(
+                mapbox=dict(
+                    style='carto-darkmatter',  # Fond sombre pour mieux voir les couleurs
+                    center=dict(lat=center_lat, lon=center_lon),
+                    zoom=5
+                ),
+                title="Carte de probabilité d'impact de météorite",
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.05,
+                    xanchor="center",
+                    x=0.5,
+                    bgcolor="rgba(255, 255, 255, 0.7)",
+                    bordercolor="rgba(0, 0, 0, 0.3)",
+                    borderwidth=1
+                ),
+                height=600,
+                margin=dict(l=0, r=0, t=50, b=50),
+                paper_bgcolor='rgba(0, 0, 0, 0)',
+                plot_bgcolor='rgba(0, 0, 0, 0)',
+            )
+            
+            # Ajouter une légende explicative
+            legend_colors = [
+                {'label': 'Très probable (>75%)', 'color': '#450256'},
+                {'label': 'Probable (50-75%)', 'color': '#21908C'},
+                {'label': 'Possible (25-50%)', 'color': '#5DC963'},
+                {'label': 'Peu probable (<25%)', 'color': '#FDE725'}
+            ]
+            
+            legend_html = html.Div([
+                html.Div([
+                    html.Div(style={
+                        "backgroundColor": item['color'],
+                        "width": "20px",
+                        "height": "20px",
+                        "marginRight": "5px",
+                        "borderRadius": "3px",
+                        "display": "inline-block"
+                    }),
+                    html.Span(item['label'])
+                ], className="d-flex align-items-center me-4") 
+                for item in legend_colors
+            ], className="d-flex flex-wrap mt-2 mb-3")
+            
+            # Ajouter une explication de la carte
+            explanation = html.Div([
+                html.Hr(),
+                html.H6("Comment interpréter cette carte:", className="mt-3"),
+                html.P([
+                    "Cette carte montre la probabilité relative d'impact de météorites à différents endroits autour du point sélectionné. ",
+                    "Les zones plus foncées (violet) indiquent une probabilité plus élevée, basée sur la densité des météorites trouvées historiquement ",
+                    "et d'autres facteurs géographiques."
+                ]),
+                html.P([
+                    html.Strong("Note: "), 
+                    "Cette prévision est une simulation basée sur les données historiques et des modèles probabilistes. ",
+                    "La précision de ces prévisions est limitée par la nature aléatoire des impacts de météorites."
+                ], className="small text-muted")
+            ])
+            
+            return html.Div([
+                html.Div([
+                    html.H5("Probabilité spatiale d'impact", className="mb-2"),
+                    html.P("Les zones en violet/bleu foncé indiquent une probabilité d'impact plus élevée"),
+                    legend_html
+                ], className="alert alert-light border p-3"),
+                dcc.Graph(figure=fig, className="mt-3 shadow-sm rounded"),
+                explanation
+            ])
+            
+        except Exception as e:
+            return html.Div([
+                html.Div([
+                    html.I(className="fas fa-exclamation-triangle me-2"),
+                    "Erreur lors de la génération de la carte de probabilité"
+                ], className="alert alert-danger"),
+                html.Pre(str(e), className="bg-light p-3 small")
+            ])
