@@ -602,113 +602,248 @@ def create_layout():
                         html.Div([
                             # Premier panneau - Carte de prédiction
                             html.Div([
+                                html.H6([
+                                    html.I(className="fas fa-map-marked-alt me-2"), 
+                                    "Carte de Sélection"
+                                ], className="mt-1 mb-3"),
                                 html.P([
                                     html.I(className="fas fa-info-circle me-2"), 
-                                    "Cliquez sur la carte pour sélectionner un point d'intérêt"
+                                    "Les points colorés représentent les météorites historiques (classées par type). Cliquez sur la carte pour sélectionner un point d'intérêt ou une zone."
                                 ], className="mb-2 text-muted"),
                                 dcc.Graph(
                                     id='prediction-map',
-                                    config={'displayModeBar': True, 'scrollZoom': True},
-                                    style={'height': '450px'}
+                                    config={
+                                        'displayModeBar': True, 
+                                        'scrollZoom': True,
+                                        'modeBarButtonsToAdd': ['select2d', 'lasso2d'],
+                                        'modeBarButtonsToRemove': ['autoScale2d'],
+                                        'toImageButtonOptions': {
+                                            'format': 'png',
+                                            'filename': 'prediction_map',
+                                            'height': 800,
+                                            'width': 1200,
+                                            'scale': 2
+                                        }
+                                    },
+                                    style={
+                                        'height': '650px',
+                                        'border': '1px solid #e2e2e2',
+                                        'border-radius': '5px'
+                                    },
+                                    className='shadow-sm'
                                 ),
                                 html.Div([
-                                    html.P(id='selected-coordinates', className='mb-2'),
-                                    
-                                    # Ajouter les inputs de prédiction
                                     html.Div([
-                                        html.Div([
-                                            html.Label("Année", className="form-label"),
-                                            dcc.Input(
-                                                id='pred-year',
-                                                type='number',
-                                                value=2023,
-                                                min=1800,
-                                                max=2050,
-                                                className="form-control"
-                                            ),
-                                        ], className="me-3 mb-2"),
-                                        html.Div([
-                                            html.Label("Type de chute", className="form-label"),
-                                            dcc.Dropdown(
-                                                id='pred-fall',
-                                                options=[
-                                                    {'label': 'Trouvée', 'value': 'Found'},
-                                                    {'label': 'Tombée', 'value': 'Fell'}
-                                                ],
-                                                value='Fell',
-                                                clearable=False,
-                                                className="form-select"
-                                            )
-                                        ], className="mb-2"),
-                                    ], className="d-flex flex-wrap mb-2"),
+                                        html.H6("Coordonnées sélectionnées", className="mb-2"),
+                                        html.P(id='selected-coordinates', className='mb-3 p-2 bg-light rounded border')
+                                    ], className="col-md-6"),
                                     
+                                    # Ajouter les inputs de prédiction dans une colonne
                                     html.Div([
-                                        html.Button([
-                                            html.I(className="fas fa-search-location me-2"),
-                                            "Analyser la zone"
-                                        ], id='analyze-zone-button', n_clicks=0, 
-                                           className='btn btn-outline-primary me-2'),
-                                        html.Button([
-                                            html.I(className="fas fa-magic me-2"),
-                                            "Prédire"
-                                        ], id='predict-button', n_clicks=0, 
-                                           className='btn btn-outline-primary')
-                                    ], className='d-flex mb-3'),
-                                ], className='mt-3')
-                            ], className='col-md-7'),
-                            
-                            # Deuxième panneau - Résultats de prédiction et zone
-                            html.Div([
+                                        html.H6("Paramètres de prédiction", className="mb-2"),
+                                        html.Div([
+                                            html.Div([
+                                                html.Label("Année", className="form-label"),
+                                                dcc.Input(
+                                                    id='pred-year',
+                                                    type='number',
+                                                    value=2023,
+                                                    min=1800,
+                                                    max=2050,
+                                                    className="form-control"
+                                                ),
+                                            ], className="me-3 mb-2"),
+                                            html.Div([
+                                                html.Label("Type de chute", className="form-label"),
+                                                dcc.Dropdown(
+                                                    id='pred-fall',
+                                                    options=[
+                                                        {'label': 'Trouvée', 'value': 'Found'},
+                                                        {'label': 'Tombée', 'value': 'Fell'}
+                                                    ],
+                                                    value='Found',
+                                                    clearable=False,
+                                                    className="form-select"
+                                                )
+                                            ], className="mb-2"),
+                                        ], className="d-flex flex-wrap"),
+                                    ], className="col-md-6"),
+                                ], className='row mt-3'),
+                                
                                 html.Div([
-                                    # Remplacer les tabs par des boutons
+                                    html.Button([
+                                        html.I(className="fas fa-search-location me-2"),
+                                        "Analyser la zone"
+                                    ], id='analyze-zone-button', n_clicks=0, 
+                                       className='btn btn-primary me-2'),
+                                    html.Button([
+                                        html.I(className="fas fa-magic me-2"),
+                                        "Prédire"
+                                    ], id='predict-button', n_clicks=0, 
+                                       className='btn btn-success me-2'),
+                                    html.Button([
+                                        html.I(className="fas fa-map me-2"),
+                                        "Sélectionner comme zone"
+                                    ], id='select-zone-button', n_clicks=0, 
+                                       className='btn btn-outline-primary')
+                                ], className='d-flex mt-2 mb-3'),
+                            ], className='col-12 mb-4'),  # Carte en pleine largeur
+                            
+                            # Panneau d'analyse étendu
+                            html.Div([
+                                html.H5([
+                                    html.I(className="fas fa-chart-line me-2"),
+                                    "Analyses Prédictives"
+                                ], className="mb-3"),
+                                
+                                # Onglets pour naviguer entre les différentes analyses
+                                html.Div([
                                     html.Div([
-                                        html.Div([
-                                            html.Button(
-                                                "Résultats de Prédiction",
-                                                id='btn-prediction-results',
-                                                className="btn btn-outline-primary me-2"
-                                            ),
-                                            html.Button(
-                                                "Analyse de Zone",
-                                                id='btn-zone-analysis',
-                                                className="btn btn-outline-primary"
-                                            ),
-                                        ], className="d-flex mb-3"),
-                                        
-                                        # Conteneurs pour les résultats
-                                        html.Div([
-                                            dcc.Loading(
-                                                id="loading-prediction",
-                                                type="circle",
-                                                children=html.Div(id='prediction-output', className='p-3')
-                                            )
-                                        ], id='prediction-results-content', style={'height': '200px', 'overflow': 'auto'}),
-                                        
-                                        html.Div([
-                                            dcc.Loading(
-                                                id="loading-zone",
-                                                type="circle",
-                                                children=html.Div(id='zone-analysis-output', className='p-3')
-                                            )
-                                        ], id='zone-analysis-content', style={'height': '200px', 'overflow': 'auto', 'display': 'none'}),
-                                    ]),
+                                        html.Button(
+                                            [html.I(className="fas fa-chart-bar me-2"), "Prédiction Simple"],
+                                            id='btn-prediction-results',
+                                            className="btn btn-outline-primary me-2"
+                                        ),
+                                        html.Button(
+                                            [html.I(className="fas fa-search me-2"), "Analyse de Zone"],
+                                            id='btn-zone-analysis',
+                                            className="btn btn-outline-primary me-2"
+                                        ),
+                                        html.Button(
+                                            [html.I(className="fas fa-calendar me-2"), "Prévision Temporelle"],
+                                            id='btn-temporal-prediction',
+                                            className="btn btn-outline-primary me-2"
+                                        ),
+                                        html.Button(
+                                            [html.I(className="fas fa-globe me-2"), "Probabilité Spatiale"],
+                                            id='btn-spatial-prediction',
+                                            className="btn btn-outline-primary"
+                                        ),
+                                    ], className="d-flex flex-wrap mb-3"),
                                     
-                                    # Importance des variables
+                                    # Conteneurs pour les résultats
                                     html.Div([
-                                        html.H6('Importance des Caractéristiques', className='mb-2'),
                                         dcc.Loading(
-                                            id="loading-importance",
+                                            id="loading-prediction",
                                             type="circle",
-                                            children=dcc.Graph(
-                                                id='feature-importance-2',
-                                                config={'displayModeBar': False},
-                                                style={'height': '350px'}
-                                            )
+                                            children=html.Div(id='prediction-output', className='p-3')
                                         )
-                                    ])
-                                ], className='h-100')
-                            ], className='col-md-5')
-                        ], className='row card-body')
+                                    ], id='prediction-results-content', style={'min-height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    
+                                    html.Div([
+                                        dcc.Loading(
+                                            id="loading-zone",
+                                            type="circle",
+                                            children=html.Div(id='zone-analysis-output', className='p-3')
+                                        )
+                                    ], id='zone-analysis-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    
+                                    html.Div([
+                                        dcc.Loading(
+                                            id="loading-temporal",
+                                            type="circle",
+                                            children=html.Div(id='temporal-prediction-output', className='p-3')
+                                        )
+                                    ], id='temporal-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    
+                                    html.Div([
+                                        dcc.Loading(
+                                            id="loading-spatial",
+                                            type="circle",
+                                            children=html.Div(id='spatial-prediction-output', className='p-3')
+                                        )
+                                    ], id='spatial-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                ]),
+                                
+                                # Paramètres de prédiction avancés
+                                html.Div([
+                                    html.H6([
+                                        html.I(className="fas fa-sliders-h me-2"),
+                                        "Paramètres Avancés"
+                                    ], className="mt-4 mb-3"),
+                                    
+                                    html.Div([
+                                        # Colonne 1: Paramètres temporels
+                                        html.Div([
+                                            html.Label("Horizon de prévision", className="form-label"),
+                                            html.Div([
+                                                dcc.Slider(
+                                                    id='forecast-horizon',
+                                                    min=1,
+                                                    max=50,
+                                                    step=1,
+                                                    value=10,
+                                                    marks={1: '1 an', 10: '10 ans', 25: '25 ans', 50: '50 ans'},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                )
+                                            ], className="mb-3"),
+                                            
+                                            html.Label("Saison", className="form-label"),
+                                            dcc.Dropdown(
+                                                id='season-filter',
+                                                options=[
+                                                    {'label': 'Toutes saisons', 'value': 'all'},
+                                                    {'label': 'Printemps', 'value': 'spring'},
+                                                    {'label': 'Été', 'value': 'summer'},
+                                                    {'label': 'Automne', 'value': 'autumn'},
+                                                    {'label': 'Hiver', 'value': 'winter'}
+                                                ],
+                                                value='all',
+                                                clearable=False,
+                                                className="form-select mb-3"
+                                            ),
+                                        ], className="col-md-6"),
+                                        
+                                        # Colonne 2: Paramètres spatiaux
+                                        html.Div([
+                                            html.Label("Rayon de la zone (degrés)", className="form-label"),
+                                            html.Div([
+                                                dcc.Slider(
+                                                    id='zone-radius',
+                                                    min=0.5,
+                                                    max=10,
+                                                    step=0.5,
+                                                    value=2.5,
+                                                    marks={0.5: '0.5°', 2.5: '2.5°', 5: '5°', 10: '10°'},
+                                                    tooltip={"placement": "bottom", "always_visible": True}
+                                                )
+                                            ], className="mb-3"),
+                                            
+                                            html.Label("Modèle de prédiction", className="form-label"),
+                                            dcc.Dropdown(
+                                                id='prediction-model',
+                                                options=[
+                                                    {'label': 'Régression linéaire', 'value': 'linear'},
+                                                    {'label': 'Random Forest', 'value': 'rf'},
+                                                    {'label': 'Gradient Boosting', 'value': 'gbm'},
+                                                    {'label': 'Réseau de neurones', 'value': 'nn'}
+                                                ],
+                                                value='rf',
+                                                clearable=False,
+                                                className="form-select mb-3"
+                                            ),
+                                        ], className="col-md-6"),
+                                    ], className="row")
+                                ], className="mt-2"),
+                                
+                                # Importance des variables
+                                html.Div([
+                                    html.H6([
+                                        html.I(className="fas fa-weight-hanging me-2"),
+                                        "Importance des Caractéristiques"
+                                    ], className='mt-4 mb-2'),
+                                    dcc.Loading(
+                                        id="loading-importance",
+                                        type="circle",
+                                        children=dcc.Graph(
+                                            id='feature-importance-2',
+                                            config={'displayModeBar': False},
+                                            style={'height': '300px'}
+                                        )
+                                    )
+                                ], className="mt-3")
+                            ], className='col-12'),  # Panneau d'analyse en pleine largeur
+                        ], className='row card-body'),
                     ], className='card h-100 shadow-sm')
                 ], className='mb-4'),
                 
@@ -732,6 +867,7 @@ def create_layout():
             ),
             dcc.Store(id='last-relayout-data', storage_type='memory'),
             dcc.Store(id='selected-location', storage_type='memory'),
+            dcc.Store(id='selected-zone', storage_type='memory'),
             dcc.Store(id='last-update-time', storage_type='memory', data=0),
             dcc.Store(id='debug-data', storage_type='memory', data='')  # Pour stocker les messages de debug
         ], style={'display': 'none'}),

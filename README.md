@@ -33,22 +33,17 @@ Application web interactive pour l'analyse et la visualisation de données sur l
 ```
 dashboard/
 ├── data/                   # Données (CSV des météorites)
-├── docs/                   # Documentation
 ├── src/                    # Code source
-│   ├── assets/             # Ressources statiques (CSS, images)
-│   ├── components/         # Composants de l'interface et contrôleurs
-│   │   ├── view.py         # Définition de l'interface utilisateur
-│   │   └── controller.py   # Callbacks et logique interactive
-│   ├── models/             # Modèles de données et ML
-│   │   ├── model.py        # Gestion des données
-│   │   └── ml_model.py     # Modèles de prédiction
-│   ├── utils/              # Utilitaires
-│   │   ├── config.py       # Configuration centralisée
-│   │   └── helpers.py      # Fonctions d'aide
-│   └── app.py              # Point d'entrée de l'application
-├── run.py                  # Script de lancement à la racine du projet
-├── requirements.txt        # Dépendances Python
-└── README.md               # Documentation principale
+│   ├── assets/            # Ressources statiques (CSS, images)
+│   ├── components/        # Composants de l'interface
+│   ├── models/           # Modèles de données et ML
+│   ├── utils/            # Utilitaires
+│   ├── app.py           # Point d'entrée de l'application
+│   └── __init__.py      # Fichier d'initialisation du package
+├── venv/                  # Environnement virtuel Python
+├── run.py                # Script de lancement à la racine du projet
+├── requirements.txt      # Dépendances Python
+└── README.md            # Documentation principale
 ```
 
 ## Installation

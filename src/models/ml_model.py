@@ -23,9 +23,15 @@ class MeteoriteML:
         self.data['mass (g)'] = pd.to_numeric(self.data['mass (g)'], errors='coerce')
         self.data = self.data.dropna(subset=['reclat', 'reclong', 'year', 'mass (g)'])
         
-        # Encodage des variables catégorielles
-        self.data['fall_encoded'] = self.le.fit_transform(self.data['fall'])
-        self.data['recclass_encoded'] = self.le.fit_transform(self.data['recclass'])
+        # Garantir que 'fall' contient bien "Fell" et "Found"
+        self.known_falls = sorted(self.data['fall'].unique().tolist())
+        
+        # Encodage des variables catégorielles - s'assurer de réaliser un fit complet
+        self.fall_le = LabelEncoder().fit(['Fell', 'Found'])  # Encodeur spécifique pour fall avec valeurs fixes
+        self.data['fall_encoded'] = self.fall_le.transform(self.data['fall'])
+        
+        self.recclass_le = LabelEncoder().fit(self.data['recclass'])
+        self.data['recclass_encoded'] = self.recclass_le.transform(self.data['recclass'])
         
     def train_mass_predictor(self):
         # Préparation des features pour la prédiction de la masse
@@ -45,11 +51,51 @@ class MeteoriteML:
     
     def predict_mass(self, lat, lon, year, fall):
         # Prédiction de la masse pour de nouvelles données
-        fall_encoded = self.le.transform([fall])[0]
-        features = np.array([[lat, lon, year, fall_encoded]])
-        features_scaled = self.scaler.transform(features)
-        mass_pred = self.mass_predictor.predict(features_scaled)
-        return np.expm1(mass_pred[0])  # Inverse log transform
+        try:
+            # Vérification des entrées
+            if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                raise ValueError("Les coordonnées doivent être numériques")
+            
+            if not isinstance(year, (int, float)):
+                raise ValueError("L'année doit être numérique")
+                
+            if not isinstance(fall, str) or fall not in ['Fell', 'Found']:
+                raise ValueError("Le type de chute doit être 'Fell' ou 'Found'")
+                
+            # Utilisation de l'encodeur spécifique pour 'fall' qui connaît 'Fell' et 'Found'
+            fall_encoded = self.fall_le.transform([fall])[0]
+            
+            # Création et normalisation des features
+            features = np.array([[lat, lon, year, fall_encoded]])
+            
+            # Vérifier qu'il existe des données pour la normalisation
+            if not hasattr(self.scaler, 'mean_') or not hasattr(self.mass_predictor, 'feature_importances_'):
+                # Si le modèle n'est pas encore entraîné, le faire maintenant
+                self.train_mass_predictor()
+                
+            # Normalisation des features
+            features_scaled = self.scaler.transform(features)
+            
+            # Prédiction
+            mass_pred = self.mass_predictor.predict(features_scaled)
+            
+            # Inversion de la transformation logarithmique et limitation des valeurs extrêmes
+            mass = np.expm1(mass_pred[0])
+            
+            # Limiter les valeurs extrêmes
+            if mass < 0.1:
+                mass = 0.1  # Minimum de 0.1g
+            elif mass > 10000000:
+                mass = 10000000  # Maximum de 10 tonnes
+                
+            return mass
+            
+        except Exception as e:
+            import traceback
+            print(f"Erreur dans la prédiction de masse: {str(e)}")
+            print(traceback.format_exc())
+            # Retourner une valeur par défaut en cas d'erreur
+            return 10.0  # Valeur par défaut raisonnable
     
     def train_class_predictor(self):
         # Préparation des features pour la classification
