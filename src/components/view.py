@@ -983,3 +983,374 @@ def create_layout():
             target='scatter-matrix-info'
         )
     ], className='container-fluid py-4', style={'backgroundColor': '#f5f5f7'})
+
+def create_prediction_tab():
+    """
+    Crée l'onglet de prédiction
+    """
+    return html.Div([
+        # Titre principal avec badge de version
+        html.Div([
+            html.H2("Prédiction de météorites", className="tab-title"),
+            html.Span("Beta", className="version-badge")
+        ], className="title-container"),
+
+        # Section des contrôles de prédiction (carte et paramètres)
+        html.Div([
+            # Colonne gauche: carte de prédiction
+            html.Div([
+                html.H3("Carte de prédiction"),
+                dcc.Graph(
+                    id='prediction-map',
+                    config={
+                        'displayModeBar': True,
+                        'scrollZoom': True,
+                        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+                    },
+                    className="prediction-map"
+                ),
+                
+                # Bouton de mise à jour en temps réel
+                html.Div([
+                    dbc.Checkbox(id="realtime-updates", value=False, className="realtime-checkbox"),
+                    html.Label("Mise à jour en temps réel", htmlFor="realtime-updates", className="realtime-label"),
+                    html.Span(
+                        html.I(className="fas fa-info-circle"),
+                        id="tooltip-realtime",
+                        className="info-icon"
+                    ),
+                    dbc.Tooltip(
+                        "Lorsque cette option est activée, les graphiques se mettent à jour automatiquement à chaque modification des paramètres, sans cliquer sur le bouton Calculer.",
+                        target="tooltip-realtime",
+                        placement="top"
+                    )
+                ], className="realtime-control")
+            ], className="map-container"),
+            
+            # Colonne droite: paramètres et contrôles
+            html.Div([
+                # Section des informations de localisation
+                html.Div([
+                    html.H3("Localisation"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Label("Latitude"),
+                            html.Div(id='selected-lat', className="coordinate-display")
+                        ], className="coordinate-container"),
+                        
+                        html.Div([
+                            html.Label("Longitude"),
+                            html.Div(id='selected-lon', className="coordinate-display")
+                        ], className="coordinate-container")
+                    ], className="coordinates-row"),
+                    
+                    html.Hr(),
+                
+                    # Paramètres de prédiction - déplacés en haut
+                    html.Div([
+                        html.H3("Paramètres de prédiction"),
+                        
+                        # Rayon d'analyse
+                        html.Div([
+                            html.Label([
+                                "Rayon d'analyse (°) ",
+                                html.Span(
+                                    html.I(className="fas fa-info-circle"),
+                                    id="tooltip-radius",
+                                    className="info-icon"
+                                )
+                            ]),
+                            dbc.Tooltip(
+                                "Définit la zone circulaire autour du point sélectionné qui sera analysée pour la prédiction. Un rayon plus grand prend en compte plus de données mais peut diluer les tendances locales.",
+                                target="tooltip-radius",
+                                placement="top"
+                            ),
+                            dcc.Slider(
+                                id='analysis-radius',
+                                min=0.5,
+                                max=10,
+                                step=0.5,
+                                value=2.5,
+                                marks={i: f'{i}°' for i in range(1, 11, 2)},
+                                className="parameter-slider"
+                            )
+                        ], className="prediction-parameter"),
+                        
+                        # Horizon de prévision
+                        html.Div([
+                            html.Label([
+                                "Horizon de prévision (années) ",
+                                html.Span(
+                                    html.I(className="fas fa-info-circle"),
+                                    id="tooltip-horizon",
+                                    className="info-icon"
+                                )
+                            ]),
+                            dbc.Tooltip(
+                                "Détermine combien d'années dans le futur la prédiction sera faite. Des horizons plus longs ont généralement une fiabilité plus faible.",
+                                target="tooltip-horizon",
+                                placement="top"
+                            ),
+                            dcc.Slider(
+                                id='forecast-horizon',
+                                min=1,
+                                max=50,
+                                step=1,
+                                value=10,
+                                marks={i: f'{i} ans' for i in range(0, 51, 10)},
+                                className="parameter-slider"
+                            )
+                        ], className="prediction-parameter"),
+                        
+                        # Paramètres avancés - déplacés en haut
+                        html.Div([
+                            html.Hr(),
+                            html.H4("Paramètres avancés"),
+                            
+                            # Facteur environnemental
+                            html.Div([
+                                html.Label([
+                                    "Facteur environnemental ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-env-factor",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Ajuste l'influence des facteurs environnementaux comme l'atmosphère et le climat sur la prédiction. Des valeurs plus élevées donnent plus d'importance à ces facteurs.",
+                                    target="tooltip-env-factor",
+                                    placement="top"
+                                ),
+                                dcc.Slider(
+                                    id='environmental-factor',
+                                    min=0,
+                                    max=1,
+                                    step=0.1,
+                                    value=0.5,
+                                    marks={i/10: f'{i/10}' for i in range(0, 11, 2)},
+                                    className="parameter-slider"
+                                )
+                            ], className="prediction-parameter"),
+                            
+                            # Poids historique
+                            html.Div([
+                                html.Label([
+                                    "Poids des données historiques ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-hist-weight",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Détermine l'importance accordée aux données historiques par rapport aux tendances récentes. Une valeur plus élevée donne plus d'importance aux données anciennes.",
+                                    target="tooltip-hist-weight",
+                                    placement="top"
+                                ),
+                                dcc.Slider(
+                                    id='historical-weight',
+                                    min=0,
+                                    max=1,
+                                    step=0.1,
+                                    value=0.7,
+                                    marks={i/10: f'{i/10}' for i in range(0, 11, 2)},
+                                    className="parameter-slider"
+                                )
+                            ], className="prediction-parameter"),
+                            
+                            # Complexité du modèle
+                            html.Div([
+                                html.Label([
+                                    "Complexité du modèle ",
+                                    html.Span(
+                                        html.I(className="fas fa-info-circle"),
+                                        id="tooltip-complexity",
+                                        className="info-icon"
+                                    )
+                                ]),
+                                dbc.Tooltip(
+                                    "Ajuste la complexité des algorithmes de prédiction. Une complexité plus élevée peut capturer des motifs plus subtils mais risque de surajuster les données.",
+                                    target="tooltip-complexity",
+                                    placement="top"
+                                ),
+                                dcc.Slider(
+                                    id='model-complexity',
+                                    min=1,
+                                    max=10,
+                                    step=1,
+                                    value=5,
+                                    marks={i: str(i) for i in range(1, 11, 2)},
+                                    className="parameter-slider"
+                                )
+                            ], className="prediction-parameter")
+                        ], className="advanced-parameters"),
+                        
+                        html.Hr(),
+                        
+                        # Bouton de calcul
+                        html.Button(
+                            "Calculer",
+                            id='calculate-prediction',
+                            className="calculate-button"
+                        )
+                    ], className="prediction-parameters"),
+                ], className="location-container"),
+                
+                # Section des résultats de prédiction
+                html.Div([
+                    html.H3("Résultats de prédiction"),
+                    
+                    # Indicateur de fiabilité modifié (comme un compteur de voiture)
+                    html.Div([
+                        html.Label("Indice de fiabilité"),
+                        daq.Gauge(
+                            id='reliability-gauge',
+                            color={"gradient":True, "ranges":{"red":[0,30],"yellow":[30,70],"green":[70,100]}},
+                            value=0,
+                            min=0,
+                            max=100,
+                            showCurrentValue=True,
+                            units="%",
+                            className="reliability-gauge"
+                        ),
+                        html.Div(id="reliability-explanation", className="reliability-explanation")
+                    ], className="reliability-container"),
+                    
+                    html.Hr(),
+                    
+                    # Statistiques principales
+                    html.Div([
+                        html.Div([
+                            html.Label("Probabilité d'impact"),
+                            html.Div(id='impact-probability', className="stat-value")
+                        ], className="stat-container"),
+                        
+                        html.Div([
+                            html.Label("Masse estimée"),
+                            html.Div(id='estimated-mass', className="stat-value")
+                        ], className="stat-container"),
+                        
+                        html.Div([
+                            html.Label("Classification probable"),
+                            html.Div(id='probable-class', className="stat-value")
+                        ], className="stat-container")
+                    ], className="statistics-container")
+                ], className="results-container")
+            ], className="controls-container")
+        ], className="prediction-controls-row"),
+        
+        # Section des graphiques de prédiction temporelle
+        html.Div([
+            html.H3("Analyse temporelle des prédictions"),
+            
+            # Prédictions temporelles
+            dcc.Graph(
+                id='time-prediction-chart',
+                config={'displayModeBar': False},
+                className="time-chart"
+            )
+        ], className="time-prediction-container"),
+        
+        # Section des analyses supplémentaires
+        html.Div([
+            html.H3("Analyses supplémentaires"),
+            
+            # Onglets pour différentes analyses
+            dcc.Tabs([
+                # Analyse 1: Distribution des masses
+                dcc.Tab(label="Distribution des masses", children=[
+                    dcc.Graph(
+                        id='mass-distribution-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 2: Évolution des classifications
+                dcc.Tab(label="Évolution des classifications", children=[
+                    dcc.Graph(
+                        id='class-evolution-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 3: Carte de densité de probabilité
+                dcc.Tab(label="Carte de densité", children=[
+                    dcc.Graph(
+                        id='density-map-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 4: Facteurs d'influence
+                dcc.Tab(label="Facteurs d'influence", children=[
+                    dcc.Graph(
+                        id='influence-factors-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 5: Tendances saisonnières
+                dcc.Tab(label="Tendances saisonnières", children=[
+                    dcc.Graph(
+                        id='seasonal-trends-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 6: Comparaison historique
+                dcc.Tab(label="Comparaison historique", children=[
+                    dcc.Graph(
+                        id='historical-comparison-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 7: Scénarios d'impact
+                dcc.Tab(label="Scénarios d'impact", children=[
+                    dcc.Graph(
+                        id='impact-scenarios-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 8: Analyse de composition
+                dcc.Tab(label="Analyse de composition", children=[
+                    dcc.Graph(
+                        id='composition-analysis-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 9: Trajectoires orbitales
+                dcc.Tab(label="Trajectoires orbitales", children=[
+                    dcc.Graph(
+                        id='orbital-trajectories-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ]),
+                
+                # Analyse 10: Évaluation des risques
+                dcc.Tab(label="Évaluation des risques", children=[
+                    dcc.Graph(
+                        id='risk-assessment-chart',
+                        config={'displayModeBar': False},
+                        className="analysis-chart"
+                    )
+                ])
+            ], className="analysis-tabs")
+        ], className="additional-analyses-container"),
+        
+        # Store pour les données de localisation sélectionnée
+        dcc.Store(id='selected-location')
+    ], className="prediction-tab")

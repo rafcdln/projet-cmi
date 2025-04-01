@@ -52,4 +52,107 @@
     align-items: center;
     justify-content: center;
     transition: width 0.5s ease-out;
+}
+
+/* Styles pour les infobulles */
+.info-icon {
+    margin-left: 5px;
+    color: #007bff;
+    cursor: pointer;
+}
+
+/* Styles pour la jauge de fiabilité */
+.reliability-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.reliability-gauge {
+    width: 100%;
+    margin: 10px 0;
+}
+
+.reliability-explanation {
+    text-align: center;
+    font-style: italic;
+    color: #555;
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+/* Styles pour le contrôle temps réel */
+.realtime-control {
+    display: flex;
+    align-items: center;
+    margin: 15px 0 5px 0;
+    padding: 8px;
+    background-color: #f0f7ff;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.realtime-checkbox {
+    margin-right: 10px;
+}
+
+.realtime-label {
+    margin-right: 5px;
+    font-weight: 500;
+}
+
+/* Analyses supplémentaires */
+.additional-analyses-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.analysis-tabs {
+    margin-top: 15px;
+}
+
+.analysis-chart {
+    height: 400px;
+    margin-top: 10px;
+}
+
+/* Restructuration des paramètres */
+.prediction-parameters {
+    margin-top: 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.advanced-parameters {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.parameter-slider {
+    margin-bottom: 15px;
+}
+
+/* Ajustements légende des graphiques */
+.time-chart .legend {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    padding: 10px;
+    background-color: rgba(255,255,255,0.8);
+    border-top: 1px solid #e9ecef;
 } 

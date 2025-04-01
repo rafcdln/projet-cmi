@@ -470,7 +470,6 @@ def register_callbacks(app, data_path):
                 lon=df_clean['reclong'],
                 radius=radius,
                 colorscale=colorscale,
-                hoverongaps=False,
                 hoverinfo='none',
                 showscale=True,
                 name='Densité'
@@ -2161,13 +2160,13 @@ def register_callbacks(app, data_path):
                 ),
                 legend=dict(
                     orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
+                    yanchor="top",
+                    y=-0.15,
                     xanchor="center",
                     x=0.5
                 ),
                 height=400,
-                margin=dict(l=40, r=30, t=50, b=40),
+                margin=dict(l=40, r=30, t=50, b=80),  # Augmenter la marge du bas pour la légende
                 hovermode="x unified",
                 plot_bgcolor='rgba(240, 240, 240, 0.3)',  # Fond légèrement grisé
                 hoverlabel=dict(
@@ -2658,3 +2657,470 @@ def register_callbacks(app, data_path):
         if not debug_data:
             return ""
         return html.Pre(debug_data, className="debug-text")
+    
+    # Callback pour mettre à jour l'interface en temps réel si l'option est activée
+    @app.callback(
+        Output('calculate-prediction', 'n_clicks'),
+        [Input('realtime-updates', 'value'),
+         Input('analysis-radius', 'value'),
+         Input('forecast-horizon', 'value'),
+         Input('environmental-factor', 'value'),
+         Input('historical-weight', 'value'),
+         Input('model-complexity', 'value')],
+        [State('calculate-prediction', 'n_clicks')]
+    )
+    def trigger_updates_if_realtime(realtime_enabled, *args):
+        if not ctx.triggered:
+            return dash.no_update
+            
+        # Si ce n'est pas le bouton "temps réel" qui a déclenché le callback
+        if ctx.triggered[0]['prop_id'] != 'realtime-updates.value':
+            # Si le mode temps réel est activé, on simule un clic sur le bouton
+            if realtime_enabled:
+                current_clicks = args[-1] if args[-1] is not None else 0
+                return current_clicks + 1
+        
+        return dash.no_update
+        
+    # Callback pour mettre à jour le jauge de fiabilité et son explication
+    @app.callback(
+        [Output('reliability-gauge', 'value'),
+         Output('reliability-explanation', 'children')],
+        [Input('selected-location', 'data'),
+         Input('forecast-horizon', 'value'),
+         Input('analysis-radius', 'value'),
+         Input('model-complexity', 'value'),
+         Input('environmental-factor', 'value'),
+         Input('historical-weight', 'value')]
+    )
+    def update_reliability_gauge(selected_location, horizon, radius, complexity, env_factor, hist_weight):
+        if not selected_location:
+            return 0, "Sélectionnez un emplacement sur la carte pour voir l'indice de fiabilité."
+            
+        # Calculer l'indice de fiabilité en fonction des paramètres
+        reliability = calculate_reliability_score(selected_location, horizon, radius, complexity, env_factor, hist_weight)
+        
+        # Générer l'explication en fonction du score
+        explanation = get_reliability_explanation(reliability, horizon, radius, complexity)
+        
+        return reliability, explanation
+        
+    # Fonction pour calculer le score de fiabilité
+    def calculate_reliability_score(location, horizon, radius, complexity, env_factor, hist_weight):
+        # Paramètres de base pour la fiabilité
+        base_score = 80  # Score de base assez élevé
+        
+        # Pénalité pour l'horizon de prévision (plus long = moins fiable)
+        horizon_penalty = min(40, horizon * 0.8)  # Max 40% de pénalité
+        
+        # Bonus pour le rayon d'analyse (plus grand = plus fiable, jusqu'à un certain point)
+        radius_bonus = min(15, radius * 3)  # Max 15% de bonus
+        
+        # Pénalité pour la complexité du modèle (trop simple ou trop complexe = moins fiable)
+        complexity_penalty = abs(complexity - 7) * 2  # Optimum autour de 7, max 12% de pénalité
+        
+        # Vérifier la disponibilité des données dans la zone
+        lat, lon = location['lat'], location['lon']
+        nearby_data_count = len(meteorite_data.get_meteorites_in_radius(lat, lon, radius))
+        data_factor = min(1.0, nearby_data_count / 50)  # Saturation à 50 météorites
+        data_bonus = data_factor * 20  # Max 20% de bonus
+        
+        # Calculer le score final
+        score = base_score - horizon_penalty + radius_bonus - complexity_penalty + data_bonus
+        
+        # Ajuster avec les facteurs environnementaux et historiques
+        score = score * (0.8 + env_factor * 0.4)  # Influence du facteur environnemental
+        score = score * (0.8 + hist_weight * 0.4)  # Influence du poids historique
+        
+        # Limiter le score entre 0 et 100
+        return max(0, min(100, score))
+        
+    # Fonction pour générer l'explication de la fiabilité
+    def get_reliability_explanation(score, horizon, radius, complexity):
+        if score < 30:
+            if horizon > 30:
+                return "Fiabilité faible : l'horizon de prévision est très éloigné, rendant les prédictions moins certaines."
+            elif radius < 2:
+                return "Fiabilité faible : le rayon d'analyse est petit, les données locales pourraient être insuffisantes."
+            else:
+                return "Fiabilité faible : combinaison de paramètres défavorables pour une prédiction précise."
+        elif score < 70:
+            if horizon > 15:
+                return "Fiabilité moyenne : l'horizon de prévision à long terme réduit la précision, mais les autres paramètres sont favorables."
+            elif complexity > 8:
+                return "Fiabilité moyenne : le modèle très complexe pourrait surajuster les données, réduisant la généralisation."
+            elif complexity < 3:
+                return "Fiabilité moyenne : le modèle simple pourrait ne pas capturer tous les motifs pertinents dans les données."
+            else:
+                return "Fiabilité moyenne : équilibre acceptable entre les différents facteurs de prédiction."
+        else:
+            return "Fiabilité élevée : combinaison optimale des paramètres et disponibilité suffisante de données historiques dans la région."
+
+    # Callback pour la distribution des masses
+    @app.callback(
+        Output('mass-distribution-chart', 'figure'),
+        [Input('calculate-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('analysis-radius', 'value'),
+         State('forecast-horizon', 'value')]
+    )
+    def update_mass_distribution(n_clicks, selected_location, radius, horizon):
+        if not n_clicks or not selected_location:
+            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
+        
+        try:
+            # Récupérer les météorites dans le rayon d'analyse
+            lat, lon = selected_location['lat'], selected_location['lon']
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            if len(nearby_data) < 5:
+                return empty_figure_with_message("Données insuffisantes pour l'analyse.")
+            
+            # Préparer les données historiques et prédites
+            historical_masses = nearby_data['mass (g)'].dropna()
+            
+            # Simuler les masses prédites (à remplacer par un vrai modèle)
+            np.random.seed(42)  # Pour reproductibilité
+            n_samples = min(100, max(20, int(len(historical_masses) * 0.3)))
+            predicted_masses = np.random.lognormal(
+                np.log(historical_masses.median()), 
+                historical_masses.std() / historical_masses.mean() * 0.8, 
+                n_samples
+            )
+            
+            # Créer la figure
+            fig = go.Figure()
+            
+            # Ajouter l'histogramme des masses historiques
+            fig.add_trace(go.Histogram(
+                x=historical_masses,
+                name="Masses historiques",
+                opacity=0.7,
+                marker_color='blue',
+                nbinsx=20,
+                histnorm='probability'
+            ))
+            
+            # Ajouter l'histogramme des masses prédites
+            fig.add_trace(go.Histogram(
+                x=predicted_masses,
+                name=f"Masses prédites (horizon: {horizon} ans)",
+                opacity=0.7,
+                marker_color='red',
+                nbinsx=20,
+                histnorm='probability'
+            ))
+            
+            # Mise en page
+            fig.update_layout(
+                title=f"Distribution des masses dans un rayon de {radius}° de la sélection",
+                xaxis_title="Masse (g)",
+                yaxis_title="Probabilité",
+                barmode='overlay',
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            # Échelle logarithmique pour les masses
+            fig.update_xaxes(type="log")
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_mass_distribution: {str(e)}")
+            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
+    
+    # Callback pour l'évolution des classifications
+    @app.callback(
+        Output('class-evolution-chart', 'figure'),
+        [Input('calculate-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('analysis-radius', 'value'),
+         State('forecast-horizon', 'value')]
+    )
+    def update_class_evolution(n_clicks, selected_location, radius, horizon):
+        if not n_clicks or not selected_location:
+            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
+        
+        try:
+            # Récupérer les météorites dans le rayon d'analyse
+            lat, lon = selected_location['lat'], selected_location['lon']
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, radius)
+            
+            if len(nearby_data) < 5:
+                return empty_figure_with_message("Données insuffisantes pour l'analyse.")
+            
+            # Créer des périodes de temps (décennies)
+            nearby_data = nearby_data.dropna(subset=['year'])
+            
+            if len(nearby_data) < 5:
+                return empty_figure_with_message("Données temporelles insuffisantes pour l'analyse.")
+                
+            nearby_data['decade'] = (nearby_data['year'] // 10) * 10
+            class_by_decade = nearby_data.groupby(['decade', 'recclass']).size().reset_index(name='count')
+            
+            # Obtenir les N classes les plus courantes
+            top_classes = nearby_data['recclass'].value_counts().nlargest(5).index.tolist()
+            class_by_decade = class_by_decade[class_by_decade['recclass'].isin(top_classes)]
+            
+            # Préparer les données pour le graphique
+            decades = sorted(nearby_data['decade'].unique())
+            
+            # Ajouter les décennies futures pour la prédiction
+            current_year = datetime.now().year
+            current_decade = (current_year // 10) * 10
+            future_decades = [current_decade + (i * 10) for i in range(1, (horizon // 10) + 1)]
+            all_decades = sorted(list(decades) + future_decades)
+            
+            # Créer la figure
+            fig = go.Figure()
+            
+            # Couleurs pour les classes
+            colors = px.colors.qualitative.Plotly[:len(top_classes)]
+            
+            # Ajouter les lignes historiques pour chaque classe
+            for i, cls in enumerate(top_classes):
+                cls_data = class_by_decade[class_by_decade['recclass'] == cls]
+                
+                # Données historiques
+                historical_data = {}
+                for _, row in cls_data.iterrows():
+                    historical_data[row['decade']] = row['count']
+                
+                # Remplir les décennies manquantes
+                for decade in decades:
+                    if decade not in historical_data:
+                        historical_data[decade] = 0
+                
+                # Trier les données par décennie
+                sorted_data = [historical_data.get(decade, 0) for decade in decades]
+                
+                # Simuler les prédictions futures (à remplacer par un modèle réel)
+                if len(sorted_data) >= 2:
+                    # Tendance simple basée sur les dernières données
+                    recent_data = sorted_data[-3:] if len(sorted_data) > 3 else sorted_data
+                    avg_change = sum(recent_data) / len(recent_data)
+                    
+                    last_value = sorted_data[-1] if sorted_data else 0
+                    predicted_values = []
+                    for i in range(len(future_decades)):
+                        # Simuler une tendance avec du bruit
+                        next_val = max(0, last_value * (1 + 0.1 * np.random.randn() + 0.05))
+                        predicted_values.append(next_val)
+                        last_value = next_val
+                else:
+                    # Pas assez de données, utiliser une simulation simple
+                    predicted_values = [1 + np.random.randint(0, 3) for _ in range(len(future_decades))]
+                
+                # Combiner historique et prédictions
+                all_values = sorted_data + predicted_values
+                all_values_dict = {decade: value for decade, value in zip(all_decades, all_values)}
+                
+                # Tracer la ligne
+                fig.add_trace(go.Scatter(
+                    x=decades,
+                    y=[all_values_dict[decade] for decade in decades],
+                    mode='lines+markers',
+                    name=cls,
+                    line=dict(color=colors[i], width=2),
+                    marker=dict(size=7, color=colors[i])
+                ))
+                
+                # Ajouter la partie prédite (ligne pointillée)
+                if future_decades:
+                    fig.add_trace(go.Scatter(
+                        x=future_decades,
+                        y=[all_values_dict[decade] for decade in future_decades],
+                        mode='lines+markers',
+                        name=f"{cls} (prédit)",
+                        line=dict(color=colors[i], width=2, dash='dash'),
+                        marker=dict(size=7, color=colors[i], symbol='diamond'),
+                        showlegend=False
+                    ))
+            
+            # Ajouter une ligne verticale pour séparer historique et prédiction
+            fig.add_shape(
+                type="line",
+                x0=current_decade, y0=0,
+                x1=current_decade, y1=1,
+                yref="paper",
+                line=dict(color="gray", width=2, dash="dot")
+            )
+            
+            # Ajouter une annotation pour marquer le présent
+            fig.add_annotation(
+                x=current_decade,
+                y=1,
+                yref="paper",
+                text="Présent",
+                showarrow=True,
+                arrowhead=2,
+                ax=0,
+                ay=-30
+            )
+            
+            # Mise en page
+            fig.update_layout(
+                title="Évolution des classifications de météorites au fil du temps",
+                xaxis_title="Année",
+                yaxis_title="Nombre de météorites",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                )
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Erreur dans update_class_evolution: {str(e)}")
+            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
+            
+    # Fonction utilitaire pour créer une figure vide avec un message
+    def empty_figure_with_message(message):
+        fig = go.Figure()
+        fig.add_annotation(
+            text=message,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16)
+        )
+        fig.update_layout(
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+        )
+        return fig
+
+    @app.callback(
+        Output('time-prediction-chart', 'figure'),
+        [Input('calculate-prediction', 'n_clicks')],
+        [State('selected-location', 'data'),
+         State('forecast-horizon', 'value'),
+         State('environmental-factor', 'value'),
+         State('historical-weight', 'value')]
+    )
+    def update_time_prediction_chart(n_clicks, selected_location, horizon, env_factor, hist_weight):
+        if not n_clicks or not selected_location:
+            return empty_figure_with_message("Cliquez sur Calculer pour générer l'analyse.")
+        
+        try:
+            # Récupérer les coordonnées
+            lat, lon = selected_location['lat'], selected_location['lon']
+            
+            # Récupérer les météorites dans la région
+            nearby_data = meteorite_data.get_meteorites_in_radius(lat, lon, 5.0)  # Rayon fixe pour cette analyse
+            
+            if len(nearby_data) < 5:
+                return empty_figure_with_message("Données insuffisantes pour l'analyse temporelle.")
+            
+            # Créer l'axe temporel
+            current_year = datetime.now().year
+            future_years = list(range(current_year, current_year + horizon + 1))
+            
+            # Facteurs d'ajustement basés sur les paramètres
+            base_probability = 0.05 + (0.15 * env_factor)  # Probabilité de base entre 5% et 20%
+            growth_rate = 0.01 + (0.02 * (1 - hist_weight))  # Taux de croissance entre 1% et 3% par an
+            
+            # Générer des probabilités simulées
+            probabilities = []
+            for i, year in enumerate(future_years):
+                # Simulation simple avec croissance et fluctuations aléatoires
+                growth_factor = 1 + (growth_rate * i) 
+                random_factor = 1 + (0.1 * np.random.randn())  # Fluctuation aléatoire de ±10%
+                prob = min(0.95, base_probability * growth_factor * random_factor)  # Limité à 95% max
+                probabilities.append(prob)
+            
+            # Probabilités cumulatives (chances qu'au moins une météorite tombe d'ici cette année)
+            cumulative_probs = []
+            cumulative_prob = 0
+            for prob in probabilities:
+                cumulative_prob = 1 - (1 - prob) * (1 - cumulative_prob)  # Formule de probabilité cumulative
+                cumulative_probs.append(cumulative_prob)
+            
+            # Créer la figure
+            fig = go.Figure()
+            
+            # Ajouter les probabilités annuelles
+            fig.add_trace(go.Bar(
+                x=future_years,
+                y=probabilities,
+                name='Probabilité annuelle',
+                marker_color='rgba(55, 83, 109, 0.7)',
+                hovertemplate='%{y:.1%}'
+            ))
+            
+            # Ajouter les probabilités cumulatives
+            fig.add_trace(go.Scatter(
+                x=future_years,
+                y=cumulative_probs,
+                mode='lines+markers',
+                name='Probabilité cumulative',
+                marker=dict(size=8, color='rgb(200, 50, 50)'),
+                line=dict(width=3, color='rgb(200, 50, 50)'),
+                hovertemplate='%{y:.1%}'
+            ))
+            
+            # Ajouter une ligne de seuil à 50% de probabilité
+            fig.add_shape(
+                type="line",
+                x0=future_years[0],
+                y0=0.5,
+                x1=future_years[-1],
+                y1=0.5,
+                line=dict(color="rgba(0, 0, 0, 0.5)", width=1, dash="dash")
+            )
+            
+            # Estimer l'année où la probabilité dépasse 50%
+            threshold_year = None
+            for i, prob in enumerate(cumulative_probs):
+                if prob >= 0.5:
+                    threshold_year = future_years[i]
+                    break
+            
+            # Ajouter une annotation pour l'année seuil
+            if threshold_year:
+                fig.add_annotation(
+                    x=threshold_year,
+                    y=0.5,
+                    text=f"Seuil 50%: {threshold_year}",
+                    showarrow=True,
+                    arrowhead=1,
+                    ax=0,
+                    ay=-40
+                )
+            
+            # Mise en page
+            fig.update_layout(
+                title=f"Prévision d'impact météoritique pour la zone de {lat:.4f}, {lon:.4f}",
+                xaxis_title="Année",
+                yaxis_title="Probabilité d'impact",
+                barmode='overlay',
+                yaxis=dict(
+                    tickformat='.0%',
+                    range=[0, 1]
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.15,
+                    xanchor="center",
+                    x=0.5
+                ),
+                margin=dict(l=40, r=30, t=50, b=80),  # Augmenter la marge du bas pour la légende
+                hovermode="x unified"
+            )
+            
+            return fig
+        
+        except Exception as e:
+            print(f"Erreur dans update_time_prediction_chart: {str(e)}")
+            return empty_figure_with_message(f"Erreur lors de l'analyse: {str(e)}")
