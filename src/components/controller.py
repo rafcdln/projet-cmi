@@ -468,11 +468,9 @@ def register_callbacks(app, data_path):
     @app.callback(
         Output('prediction-map', 'figure'),
         [Input('selected-location', 'data'),
-         Input('selected-zone', 'data'),
-         Input('map-style-dropdown', 'value'),
-         Input('zone-radius', 'value')]
+         Input('map-style-dropdown', 'value')]
     )
-    def update_prediction_map(selected_location, selected_zone, map_style, zone_radius):
+    def update_prediction_map(selected_location, map_style):
         # Création de la carte de base avec les données historiques
         df = meteorite_data.get_filtered_data()
         
@@ -512,7 +510,7 @@ def register_callbacks(app, data_path):
                         df['mass (g)'], df['year'], df['fall']],  # Inclure toutes les données pour le survol
             color_discrete_sequence=px.colors.qualitative.Plotly,  # Utiliser la palette de couleurs Plotly
             zoom=2,  # Vue mondiale par défaut
-            height=650,  # Augmentation de la hauteur pour correspondre au style mis à jour
+            height=500,  # Augmenter la hauteur pour une meilleure visibilité
             hover_data={
                 'reclat': False,
                 'reclong': False,
@@ -532,7 +530,7 @@ def register_callbacks(app, data_path):
         
         # Ajout des instructions directement sur la carte
         fig.add_annotation(
-            text="Cliquez n'importe où sur la carte pour sélectionner un point ou une zone",
+            text="Cliquez n'importe où sur la carte pour sélectionner un point",
             xref="paper", yref="paper",
             x=0.5, y=0.05,
             showarrow=False,
@@ -544,94 +542,55 @@ def register_callbacks(app, data_path):
             align="center"
         )
         
-        center_lat = 20
-        center_lon = 0
-        zoom_level = 1
-        
         # Si un emplacement est sélectionné, ajouter un marqueur
         if selected_location and 'lat' in selected_location and 'lon' in selected_location:
-            lat, lon = selected_location['lat'], selected_location['lon']
-            center_lat, center_lon = lat, lon
-            zoom_level = 4
-            
-            # Si une zone est sélectionnée, afficher la zone avec le rayon approprié
-            if selected_zone is not None:
-                radius = selected_zone['radius']
-                
-                # Ajouter un cercle autour du point pour la zone
-                lats, lons = create_circle(lat, lon, radius)
-            fig.add_trace(go.Scattermapbox(
-                    lat=lats,
-                    lon=lons,
-                    mode='lines',
-                    line=dict(
-                        width=3,
-                        color='#ff3b30'  # Rouge plus vif pour la zone sélectionnée
-                    ),
-                    name="Zone sélectionnée",
-                    hoverinfo="text",
-                    hovertext=f"Zone: rayon de {radius}°<br>Centre: {lat:.4f}, {lon:.4f}"
-                ))
-                
-                # Ajouter un marqueur pour le centre de la zone
-                fig.add_trace(go.Scattermapbox(
-                    lat=[lat],
-                    lon=[lon],
-                mode='markers',
-                marker=dict(
-                        size=10,
-                        color='#ff3b30',
-                        symbol='circle',
-                        line=dict(
-                            width=2,
-                            color='white'
-                        )
-                    ),
-                    name="Centre de la zone",
-                hoverinfo="text",
-                    hovertext=f"Centre: Lat: {lat:.4f}, Lon: {lon:.4f}"
-                ))
-            else:
-                # Sinon, afficher un cercle d'analyse standard et un marqueur pour le point sélectionné
-                # Ajouter un cercle d'analyse autour du point
-                lats, lons = create_circle(lat, lon, zone_radius)
+            # Ajouter un cercle autour du point
+            lats, lons = create_circle(selected_location['lat'], selected_location['lon'], 2.5)
             fig.add_trace(go.Scattermapbox(
                 lat=lats,
                 lon=lons,
                 mode='lines',
                 line=dict(
                     width=2,
-                        color='#ff9500'  # Orange pour le cercle d'analyse
+                    color='#ff9500'
                 ),
-                    name=f"Zone d'analyse (rayon {zone_radius}°)",
+                name="Zone d'analyse (rayon 2.5°)",
                 hoverinfo="skip"
             ))
-        
-                # Ajouter un marqueur pour le point sélectionné
-                fig.add_trace(go.Scattermapbox(
-                    lat=[lat],
-                    lon=[lon],
-                    mode='markers',
-                    marker=dict(
-                        size=10,
-                        color='#ff9500',
-                        symbol='marker',
-                        line=dict(
-                            width=2,
-                            color='white'
-                        )
-                    ),
-                    name="Point sélectionné",
-                    hoverinfo="text",
-                    hovertext=f"Point: Lat: {lat:.4f}, Lon: {lon:.4f}"
-                ))
-        
-        # Mise à jour du layout avec le centre et le zoom déterminés
+            
+            # Ajouter un marqueur pour le point sélectionné
+            fig.add_trace(go.Scattermapbox(
+                lat=[selected_location['lat']],
+                lon=[selected_location['lon']],
+                mode='markers',
+                marker=dict(
+                    size=15,
+                    color='#ff9500',
+                    symbol='marker',
+                    line=dict(
+                        width=2,
+                        color='white'
+                    )
+                ),
+                name="Emplacement sélectionné",
+                hoverinfo="text",
+                hovertext=f"Lat: {selected_location['lat']:.4f}, Lon: {selected_location['lon']:.4f}"
+            ))
+            
+            # Centrer la carte sur l'emplacement sélectionné avec un zoom adapté
             fig.update_layout(
                 mapbox=dict(
-                    style=actual_style,
-                center=dict(lat=center_lat, lon=center_lon),
-                zoom=zoom_level
+                    center=dict(lat=selected_location['lat'], lon=selected_location['lon']),
+                    zoom=4  # Zoom adapté à la visualisation de la zone
+                )
+            )
+        
+        # Mise à jour du layout - avec un style similaire au graphique principal
+        fig.update_layout(
+            mapbox=dict(
+                style=actual_style,
+                center=dict(lat=20, lon=0) if not selected_location else dict(lat=selected_location['lat'], lon=selected_location['lon']),
+                zoom=1 if not selected_location else 4
             ),
             margin={"r":0,"t":0,"l":0,"b":0},
             showlegend=True,
@@ -647,7 +606,7 @@ def register_callbacks(app, data_path):
                 borderwidth=1
             ),
             clickmode='event+select'  # Activer la sélection et les événements de clic
-            )
+        )
         
         return fig
 
@@ -674,9 +633,9 @@ def register_callbacks(app, data_path):
         # Récupérer les coordonnées selon le type de point cliqué
         if 'lat' in point and 'lon' in point:
             # Clic direct sur un point existant
-        return {
-            'lat': point['lat'],
-            'lon': point['lon']
+            return {
+                'lat': point['lat'],
+                'lon': point['lon']
             }
         elif 'mapbox.lat' in point and 'mapbox.lon' in point:
             # Clic sur la carte (hors points)
@@ -734,17 +693,15 @@ def register_callbacks(app, data_path):
         
         if location is None:
             return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-triangle me-2"), "Point non sélectionné"], 
-                      className="text-warning mb-3"),
+                html.H5("Point non sélectionné", className="text-warning"),
                 html.P("Veuillez cliquer sur la carte pour sélectionner un emplacement.")
-            ], className="alert alert-warning border rounded shadow-sm")
+            ], className="alert alert-warning")
             
         if year is None or fall is None:
             return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-triangle me-2"), "Paramètres incomplets"], 
-                      className="text-warning mb-3"),
+                html.H5("Paramètres incomplets", className="text-warning"),
                 html.P("Veuillez spécifier l'année et le type de chute.")
-            ], className="alert alert-warning border rounded shadow-sm")
+            ], className="alert alert-warning")
             
         try:
             # Vérifier que le modèle est correctement initialisé
@@ -770,89 +727,28 @@ def register_callbacks(app, data_path):
             )
             
             # Formater la masse prédite
-            if predicted_mass < 1:
-                mass_formatted = f"{predicted_mass*1000:.1f} milligrammes"
-            elif predicted_mass < 1000:
-                mass_formatted = f"{predicted_mass:.2f} grammes"
-            elif predicted_mass < 1000000:
-                mass_formatted = f"{predicted_mass/1000:.2f} kilogrammes"
-            else:
-                mass_formatted = f"{predicted_mass/1000000:.2f} tonnes"
-            
-            # Récupérer les données de météorites proches pour contexte
-            df = meteorite_data.get_filtered_data()
-            nearby = df[
-                (df['reclat'].between(location['lat'] - 5, location['lat'] + 5)) &
-                (df['reclong'].between(location['lon'] - 5, location['lon'] + 5))
-            ]
-            
-            nearby_count = len(nearby)
-            nearby_classes = nearby['recclass'].value_counts().to_dict()
-            top_classes = sorted(nearby_classes.items(), key=lambda x: x[1], reverse=True)[:3]
-            
-            # Calculer la masse moyenne dans la région
-            avg_mass = nearby['mass (g)'].mean() if not nearby.empty else 0
-            
-            # Préparer un texte comparatif
-            comparison_text = ""
-            if avg_mass > 0:
-                if predicted_mass > avg_mass * 1.5:
-                    comparison_text = "Cette prédiction est nettement supérieure à la moyenne régionale."
-                elif predicted_mass < avg_mass * 0.5:
-                    comparison_text = "Cette prédiction est nettement inférieure à la moyenne régionale."
-                else:
-                    comparison_text = "Cette prédiction est proche de la moyenne régionale."
+            mass_formatted = f"{predicted_mass:.2f}" if predicted_mass < 1000 else f"{predicted_mass/1000:.2f}k"
             
             return html.Div([
-                html.H5([html.I(className="fas fa-meteor me-2"), "Résultats de la prédiction"], 
-                       className="mb-3 text-primary"),
-                
-                # Cartouche principal avec la masse prédite
+                html.H5("Résultats de la prédiction:", className="mb-3 text-success"),
                 html.Div([
+                    html.Span("Masse prédite: ", className="fw-bold"),
+                    html.Span(f"{mass_formatted} grammes", 
+                             className="text-primary fs-5")
+                ], className="mb-2"),
                 html.Div([
-                        html.H3(mass_formatted, className="m-0")
-                    ], className="p-3 bg-primary text-white rounded-top"),
-                    html.Div([
-                        html.Div([
-                            html.Div([
-                                html.Strong("Coordonnées:"),
-                                html.Div(f"Latitude: {location['lat']:.4f}"),
-                                html.Div(f"Longitude: {location['lon']:.4f}")
-                            ], className="col-md-4"),
-                            html.Div([
-                                html.Strong("Paramètres:"),
-                                html.Div(f"Année: {year}"),
-                                html.Div(f"Type: {fall}")
-                            ], className="col-md-4"),
-                            html.Div([
-                                html.Strong("Météorites similaires:"),
-                                html.Div(f"{nearby_count} météorites dans la région")
-                            ], className="col-md-4")
-                        ], className="row")
-                    ], className="p-3 bg-light rounded-bottom border border-top-0")
-                ], className="mb-3 shadow-sm"),
-                
-                # Contexte régional
+                    html.Span("Localisation: ", className="fw-bold"),
+                    html.Br(),
+                    f"Latitude: {location['lat']:.4f}", html.Br(),
+                    f"Longitude: {location['lon']:.4f}"
+                ], className="text-muted small"),
                 html.Div([
-                    html.H6([html.I(className="fas fa-info-circle me-2"), "Contexte régional"], 
-                           className="mb-2"),
-                    html.Div([
-                        html.Div([
-                            html.Strong("Classes dominantes dans la région:"),
-                            html.Ul([
-                                html.Li(f"{c}: {n} météorites") for c, n in top_classes
-                            ] if top_classes else [html.Li("Aucune donnée disponible")])
-                        ], className="col-md-6"),
-                        html.Div([
-                            html.Strong("Comparaison:"),
-                            html.P(comparison_text or "Données insuffisantes pour la comparaison.", 
-                                  className="text-muted")
-                        ], className="col-md-6")
-                    ], className="row")
-                ], className="mt-3 p-3 bg-light rounded border")
-                
-            ], className="alert alert-light border rounded shadow-sm p-4")
-            
+                    html.Span("Paramètres: ", className="fw-bold"),
+                    html.Br(),
+                    f"Année: {year}", html.Br(),
+                    f"Type de chute: {fall}"
+                ], className="text-muted small mt-2")
+            ], className="alert alert-light border shadow-sm")
         except Exception as e:
             import traceback
             trace = traceback.format_exc()
@@ -860,16 +756,14 @@ def register_callbacks(app, data_path):
             print(trace)
             
             return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-circle me-2"), "Erreur"], 
-                       className="text-danger mb-3"),
+                html.H5("Erreur", className="text-danger"),
                 html.P(f"Erreur lors de la prédiction: {str(e)}"),
-                html.P("Vérifiez les valeurs d'entrée et réessayez."),
+                html.P("Vérifiez les valeurs d'entrée."),
                 html.Details([
-                    html.Summary("Détails techniques (cliquez pour développer)", 
-                                className="text-muted small"),
-                    html.Pre(trace, style={"whiteSpace": "pre-wrap", "fontSize": "0.8rem"})
+                    html.Summary("Détails techniques (cliquez pour développer)"),
+                    html.Pre(trace, style={"whiteSpace": "pre-wrap"})
                 ], className="mt-2")
-            ], className="alert alert-danger border rounded shadow-sm")
+            ], className="alert alert-danger")
     
     @app.callback(
         Output('zone-analysis-output', 'children'),
@@ -879,13 +773,6 @@ def register_callbacks(app, data_path):
     def analyze_zone(n_clicks, location):
         if n_clicks is None or location is None:
             return ""
-        
-        if location is None:
-            return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-triangle me-2"), "Point non sélectionné"], 
-                       className="text-warning mb-3"),
-                html.P("Veuillez cliquer sur la carte pour sélectionner un emplacement.")
-            ], className="alert alert-warning border rounded shadow-sm")
         
         # Analyse d'une zone de 2.5 degrés autour du point sélectionné
         lat, lon = location['lat'], location['lon']
@@ -898,123 +785,49 @@ def register_callbacks(app, data_path):
         
         if len(zone_data) == 0:
             return html.Div([
-                html.H5([html.I(className="fas fa-search-minus me-2"), "Aucune météorite connue"], 
-                       className="text-info mb-3"),
+                html.H5("Aucune météorite connue", className="text-info mb-3"),
                 html.P("Aucune météorite n'a été enregistrée dans cette zone."),
-                html.P("Essayez de sélectionner une autre zone ou d'élargir vos critères de recherche.")
-            ], className="alert alert-info border rounded shadow-sm")
+                html.P([
+                    "Coordonnées analysées: ",
+                    html.Br(),
+                    f"Latitude: {lat:.4f} ± 2.5°",
+                    html.Br(),
+                    f"Longitude: {lon:.4f} ± 2.5°"
+                ], className="text-muted small")
+            ], className="alert alert-light border")
         
-        # Calculs statistiques
-        total_count = len(zone_data)
-        total_mass = zone_data['mass (g)'].sum()
-        avg_mass = zone_data['mass (g)'].mean()
-        min_mass = zone_data['mass (g)'].min()
-        max_mass = zone_data['mass (g)'].max()
+        # Calculer des statistiques avancées
+        stats = {
+            'Nombre de météorites': len(zone_data),
+            'Masse totale': f"{zone_data['mass (g)'].sum():.1f} g",
+            'Masse moyenne': f"{zone_data['mass (g)'].mean():.2f} g",
+            'Masse médiane': f"{zone_data['mass (g)'].median():.2f} g",
+            'Masse minimale': f"{zone_data['mass (g)'].min():.2f} g",
+            'Masse maximale': f"{zone_data['mass (g)'].max():.2f} g",
+            'Période': f"{int(zone_data['year'].min())} - {int(zone_data['year'].max())}",
+            'Classes principales': ", ".join(zone_data['recclass'].value_counts().nlargest(3).index.tolist())
+        }
         
-        # Distribution des années
-        earliest = int(zone_data['year'].min()) if not np.isnan(zone_data['year'].min()) else 'Inconnue'
-        latest = int(zone_data['year'].max()) if not np.isnan(zone_data['year'].max()) else 'Inconnue'
-        
-        # Distribution des classes
-        classes = zone_data['recclass'].value_counts().to_dict()
-        top_classes = sorted(classes.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        # Distribution des types de chute
-        falls = zone_data['fall'].value_counts().to_dict()
-        
-        # Formatage des masses pour l'affichage
-        def format_mass(mass):
-            if mass < 1:
-                return f"{mass*1000:.1f} mg"
-            elif mass < 1000:
-                return f"{mass:.2f} g"
-            elif mass < 1000000:
-                return f"{mass/1000:.2f} kg"
-            else:
-                return f"{mass/1000000:.2f} t"
-        
-        # Création du rapport détaillé
         return html.Div([
-            html.H5([html.I(className="fas fa-search-location me-2"), "Analyse de la Zone"],
-                   className="mb-3 text-primary"),
+            html.H5("Analyse de la Zone", className="text-info mb-3"),
+            html.P(f"Analyse d'une zone de 2.5° autour de ({lat:.4f}, {lon:.4f})"),
             
-            # Cartouche principal avec le résumé
-            html.Div([
-                html.Div([
-                    html.H4(f"{total_count} météorites", className="m-0"),
-                    html.P(f"dans un rayon de 2.5° autour de ({lat:.4f}, {lon:.4f})", 
-                          className="mb-0 text-white-50")
-                ], className="p-3 bg-primary text-white rounded-top"),
-                
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.Strong("Période:"),
-                            html.Div(f"De {earliest} à {latest}")
-                        ], className="col-md-4"),
-                        html.Div([
-                            html.Strong("Masse totale:"),
-                            html.Div(format_mass(total_mass))
-                        ], className="col-md-4"),
-                        html.Div([
-                            html.Strong("Masse moyenne:"),
-                            html.Div(format_mass(avg_mass))
-                        ], className="col-md-4")
-                    ], className="row")
-                ], className="p-3 bg-light rounded-bottom border border-top-0")
-            ], className="mb-3 shadow-sm"),
-            
-            # Détails supplémentaires
-            html.Div([
-                # Distribution des classes
-                html.Div([
-                    html.H6([html.I(className="fas fa-tags me-2"), "Classes de météorites"], 
-                           className="mb-2"),
-                    html.Div([
-                        html.Div([
-                            html.Div([
-                                html.Strong(f"{c}: "),
-                                f"{n} météorites ({n/total_count*100:.1f}%)"
-                            ], className="mb-1") for c, n in top_classes
-                        ], className="col-md-6"),
-                        html.Div([
-                            html.Strong("Distribution des masses:"),
-                            html.Ul([
-                                html.Li(f"Minimum: {format_mass(min_mass)}"),
-                                html.Li(f"Maximum: {format_mass(max_mass)}"),
-                                html.Li(f"Médiane: {format_mass(zone_data['mass (g)'].median())}")
-                            ], className="mb-0")
-                        ], className="col-md-6")
-                    ], className="row")
-                ], className="mb-3"),
-                
-                # Types de chute
-                html.Div([
-                    html.H6([html.I(className="fas fa-meteor me-2"), "Types de chute"], 
-                           className="mb-2"),
-                    html.Div([
-                        html.Div([
-                            html.Strong(f"{fall}: "),
-                            f"{count} météorites ({count/total_count*100:.1f}%)"
-                        ], className="mb-1") for fall, count in falls.items()
+            html.Table([
+                html.Thead(
+                    html.Tr([
+                        html.Th("Caractéristique", className="text-start"),
+                        html.Th("Valeur", className="text-end")
                     ])
-                ], className="mb-3"),
-                
-                # Lien vers météorites remarquables
-                html.Div([
-                    html.H6([html.I(className="fas fa-star me-2"), "Météorites remarquables"], 
-                           className="mb-2"),
-                    # Trouver les 3 plus grosses météorites de la zone
-                    html.Ul([
-                        html.Li([
-                            html.Strong(f"{row['name']}: "),
-                            f"{format_mass(row['mass (g)'])} - {row['recclass']} ({int(row['year']) if not np.isnan(row['year']) else 'Année inconnue'})"
-                        ]) for _, row in zone_data.nlargest(3, 'mass (g)').iterrows()
-                    ])
+                ),
+                html.Tbody([
+                    html.Tr([
+                        html.Td(k, className="text-start fw-bold"),
+                        html.Td(v, className="text-end")
+                    ]) for k, v in stats.items()
                 ])
-            ], className="p-3 bg-light rounded border")
+            ], className="table table-sm table-hover")
             
-        ], className="alert alert-light border rounded shadow-sm p-4")
+        ], className="alert alert-light border")
     
     @app.callback(
         Output('correlation-heatmap', 'figure'),
@@ -1930,564 +1743,72 @@ def register_callbacks(app, data_path):
     @app.callback(
         [Output('prediction-results-content', 'style'),
          Output('zone-analysis-content', 'style'),
-         Output('temporal-prediction-content', 'style'),
-         Output('spatial-prediction-content', 'style'),
          Output('btn-prediction-results', 'className'),
-         Output('btn-zone-analysis', 'className'),
-         Output('btn-temporal-prediction', 'className'),
-         Output('btn-spatial-prediction', 'className')],
+         Output('btn-zone-analysis', 'className')],
         [Input('btn-prediction-results', 'n_clicks'),
-         Input('btn-zone-analysis', 'n_clicks'),
-         Input('btn-temporal-prediction', 'n_clicks'),
-         Input('btn-spatial-prediction', 'n_clicks')]
+         Input('btn-zone-analysis', 'n_clicks')]
     )
-    def toggle_prediction_views(pred_clicks, zone_clicks, temporal_clicks, spatial_clicks):
-        # Styles par défaut
-        base_style = {'min-height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
-        hidden_style = {'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+    def toggle_prediction_views(pred_clicks, zone_clicks):
+        # Par défaut, le panneau de prédiction est affiché
+        pred_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+        zone_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+        pred_class = 'btn btn-primary me-2'  # Active par défaut
+        zone_class = 'btn btn-outline-primary'
         
-        # Classes de boutons
-        inactive_btn = 'btn btn-outline-primary me-2'
-        active_btn = 'btn btn-primary me-2'
-        inactive_last_btn = 'btn btn-outline-primary'
-        active_last_btn = 'btn btn-primary'
-        
-        # Valeurs par défaut - afficher prédiction simple
-        pred_style = base_style
-        zone_style = hidden_style
-        temporal_style = hidden_style
-        spatial_style = hidden_style
-        
-        pred_btn = active_btn
-        zone_btn = inactive_btn
-        temporal_btn = inactive_btn
-        spatial_btn = inactive_last_btn
-        
-        # Déterminer quel bouton a été cliqué
+        # Détecter le bouton cliqué
         ctx = dash.callback_context
-        if ctx.triggered:
+        if not ctx.triggered:
+            return pred_style, zone_style, pred_class, zone_class
+            
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
-            # Réinitialiser tous les styles et classes
-            pred_style = hidden_style
-            zone_style = hidden_style
-            temporal_style = hidden_style
-            spatial_style = hidden_style
-            
-            pred_btn = inactive_btn
-            zone_btn = inactive_btn
-            temporal_btn = inactive_btn
-            spatial_btn = inactive_last_btn
-            
-            # Mettre à jour en fonction du bouton cliqué
         if button_id == 'btn-prediction-results':
-                pred_style = base_style
-                pred_btn = active_btn
-            elif button_id == 'btn-zone-analysis':
-                zone_style = base_style
-                zone_btn = active_btn
-            elif button_id == 'btn-temporal-prediction':
-                temporal_style = base_style
-                temporal_btn = active_btn
-            elif button_id == 'btn-spatial-prediction':
-                spatial_style = base_style
-                spatial_btn = active_last_btn
-        
-        return pred_style, zone_style, temporal_style, spatial_style, pred_btn, zone_btn, temporal_btn, spatial_btn
-    
-    # Callback pour la prédiction temporelle
-    @app.callback(
-        Output('temporal-prediction-output', 'children'),
-        [Input('btn-temporal-prediction', 'n_clicks'),
-         Input('forecast-horizon', 'value'),
-         Input('season-filter', 'value')],
-        [State('selected-location', 'data'),
-         State('selected-zone', 'data')]
-    )
-    def generate_temporal_prediction(n_clicks, horizon, season, location, zone):
-        if n_clicks is None or (location is None and zone is None):
-            return html.Div("Cliquez sur le bouton 'Prévision Temporelle' après avoir sélectionné un point ou une zone.", 
-                           className="text-muted p-3")
-        
-        # Déterminer si on utilise un point ou une zone
-        if zone is not None:
-            lat, lon = zone['center_lat'], zone['center_lon']
-            radius = zone['radius']
-            location_type = "zone"
+            # Afficher le panneau de prédiction
+            pred_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            zone_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            pred_class = 'btn btn-primary me-2'
+            zone_class = 'btn btn-outline-primary'
         else:
-            lat, lon = location['lat'], location['lon']
-            radius = 2.5  # Rayon par défaut
-            location_type = "point"
-        
-        try:
-            # Récupérer les données historiques dans la région
-            df = meteorite_data.get_filtered_data()
+            # Afficher le panneau d'analyse de zone
+            pred_style = {'height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            zone_style = {'height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}
+            pred_class = 'btn btn-outline-primary me-2'
+            zone_class = 'btn btn-primary'
             
-            # Filtrer les données pour la région sélectionnée
-            if location_type == "zone":
-                nearby = df[
-                    (df['reclat'].between(lat - radius, lat + radius)) &
-                    (df['reclong'].between(lon - radius, lon + radius))
-                ]
-            else:
-                nearby = df[
-                    (df['reclat'].between(lat - 2.5, lat + 2.5)) &
-                    (df['reclong'].between(lon - 2.5, lon + 2.5))
-                ]
-            
-            # Si pas assez de données, élargir la zone
-            if len(nearby) < 5:
-                search_radius = radius * 2
-                nearby = df[
-                    (df['reclat'].between(lat - search_radius, lat + search_radius)) &
-                    (df['reclong'].between(lon - search_radius, lon + search_radius))
-                ]
-            
-            # S'il n'y a toujours pas assez de données
-            if len(nearby) < 3:
-                return html.Div([
-                    html.H5([html.I(className="fas fa-exclamation-triangle me-2"), "Données insuffisantes"], 
-                           className="text-warning mb-3"),
-                    html.P("Pas assez de données historiques dans cette région pour générer une prévision temporelle fiable."),
-                    html.P("Essayez de sélectionner une autre zone ou d'élargir le rayon.")
-                ], className="alert alert-warning")
-            
-            # Filtrer par saison si nécessaire
-            if season != 'all':
-                # Supposons que la colonne de mois existe ou puisse être dérivée
-                # Dans un cas réel, vous devrez adapter ceci à vos données
-                season_months = {
-                    'winter': [12, 1, 2],
-                    'spring': [3, 4, 5],
-                    'summer': [6, 7, 8],
-                    'autumn': [9, 10, 11]
-                }
-                
-                # Si la colonne de date existe, filtrer par mois
-                if 'date' in df.columns:
-                    try:
-                        nearby['month'] = pd.to_datetime(nearby['date']).dt.month
-                        nearby = nearby[nearby['month'].isin(season_months[season])]
-                    except:
-                        pass
-            
-            # Analyser les tendances temporelles
-            yearly_data = nearby.groupby(nearby['year'].astype(int)).size().reset_index(name='count')
-            
-            # Calculer la moyenne et l'écart-type pour l'estimation probabiliste
-            avg_yearly = yearly_data['count'].mean()
-            std_yearly = yearly_data['count'].std() if len(yearly_data) > 1 else avg_yearly * 0.5
-            
-            # Générer une prévision pour les prochaines années
-            current_year = datetime.now().year
-            future_years = list(range(current_year, current_year + horizon + 1))
-            
-            # Créer une valeur médiane estimée pour une visualisation
-            predicted_counts = np.random.normal(avg_yearly, std_yearly, len(future_years))
-            predicted_counts = np.maximum(predicted_counts, 0)  # Pas de valeurs négatives
-            
-            # Calculer des intervalles de confiance
-            lower_bound = np.maximum(predicted_counts - 1.96 * std_yearly, 0)
-            upper_bound = predicted_counts + 1.96 * std_yearly
-            
-            # Préparer les données pour le graphique
-            forecast_df = pd.DataFrame({
-                'Année': future_years,
-                'Prévision': predicted_counts,
-                'Min': lower_bound,
-                'Max': upper_bound
-            })
-            
-            # Calculer les probabilités pour l'affichage
-            prob_at_least_one = 1 - np.exp(-avg_yearly)
-            prob_at_least_one_percent = prob_at_least_one * 100
-            
-            # Estimer la date de la prochaine chute
-            days_until_next = 365 / avg_yearly if avg_yearly > 0 else float('inf')
-            next_date_estimate = (datetime.now() + pd.Timedelta(days=days_until_next)).strftime('%d/%m/%Y')
-            
-            # Créer un graphique de prévision
-            fig = go.Figure()
-            
-            # Données historiques
-            fig.add_trace(go.Scatter(
-                x=yearly_data['year'],
-                y=yearly_data['count'],
-                mode='markers',
-                name='Historique',
-                marker=dict(color='#0071e3', size=8)
-            ))
-            
-            # Ligne de prévision
-            fig.add_trace(go.Scatter(
-                x=forecast_df['Année'],
-                y=forecast_df['Prévision'],
-                mode='lines',
-                name='Prévision médiane',
-                line=dict(color='#ff9500', width=2)
-            ))
-            
-            # Intervalle de confiance
-            fig.add_trace(go.Scatter(
-                x=forecast_df['Année'].tolist() + forecast_df['Année'].tolist()[::-1],
-                y=forecast_df['Max'].tolist() + forecast_df['Min'].tolist()[::-1],
-                fill='toself',
-                fillcolor='rgba(255, 149, 0, 0.2)',
-                line=dict(color='rgba(255, 149, 0, 0)'),
-                hoverinfo='skip',
-                showlegend=False
-            ))
-            
-            fig.update_layout(
-                title=f"Prévision des Chutes de Météorites {f'({season})' if season != 'all' else ''}",
-                xaxis_title="Année",
-                yaxis_title="Nombre de météorites",
-                margin=dict(l=20, r=20, t=40, b=20),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                ),
-                height=300
-            )
-            
-            # Résumé textuel de la prévision
-            return html.Div([
-                html.H5([html.I(className="fas fa-calendar-alt me-2"), "Prévision Temporelle"], 
-                       className="mb-3 text-primary"),
-                
-                html.Div([
-                    # Statistiques de prévision
-                    html.Div([
-                        html.Div([
-                            html.H4(f"{avg_yearly:.1f}", className="mb-0 text-primary"),
-                            html.P("météorites par an", className="text-muted mb-0")
-                        ], className="p-3 bg-light rounded border mb-3"),
-                        
-                        html.Div([
-                            html.Strong("Prochaine météorite estimée:", className="d-block mb-2"),
-                            html.Div([
-                                html.Span("Date: ", className="fw-bold"), 
-                                html.Span(next_date_estimate, className="text-primary")
-                            ], className="mb-1"),
-                            html.Div([
-                                html.Span("Probabilité dans l'année: ", className="fw-bold"), 
-                                html.Span(f"{prob_at_least_one_percent:.1f}%", className="text-primary")
-                            ])
-                        ], className="mb-3")
-                    ], className="col-md-4"),
-                    
-                    # Graphique de prévision
-                    html.Div([
-                        dcc.Graph(
-                            figure=fig,
-                            config={'displayModeBar': False}
-                        )
-                    ], className="col-md-8")
-                ], className="row mb-3"),
-                
-                # Détails de la méthodologie
-                html.Div([
-                    html.H6("Méthodologie", className="mb-2"),
-                    html.P([
-                        "Cette prévision est basée sur l'analyse de ",
-                        html.Strong(f"{len(nearby)} météorites historiques "),
-                        f"dans un rayon de {radius if location_type == 'zone' else 2.5}° autour du point sélectionné. ",
-                        "L'estimation utilise un modèle de distribution de Poisson pour les événements rares."
-                    ], className="text-muted small")
-                ], className="mt-3 p-3 bg-light rounded border")
-                
-            ], className="p-3")
-        
-        except Exception as e:
-            import traceback
-            print(f"Erreur dans la prédiction temporelle: {str(e)}")
-            print(traceback.format_exc())
-            
-            return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-circle me-2"), "Erreur"], 
-                       className="text-danger mb-3"),
-                html.P(f"Erreur lors de la génération de la prévision temporelle: {str(e)}"),
-                html.Details([
-                    html.Summary("Détails techniques", className="text-muted"),
-                    html.Pre(traceback.format_exc(), style={"whiteSpace": "pre-wrap", "fontSize": "0.8rem"})
-                ])
-            ], className="alert alert-danger")
-    
-    # Callback pour la prédiction spatiale
+        return pred_style, zone_style, pred_class, zone_class
+
     @app.callback(
-        Output('spatial-prediction-output', 'children'),
-        [Input('btn-spatial-prediction', 'n_clicks'),
-         Input('prediction-model', 'value')],
-        [State('selected-location', 'data'),
-         State('selected-zone', 'data'),
-         State('pred-year', 'value'),
-         State('pred-fall', 'value')]
+        [Output('distribution-map-content', 'style'),
+         Output('heatmap-content', 'style'),
+         Output('btn-distribution-map', 'className'),
+         Output('btn-heatmap', 'className')],
+        [Input('btn-distribution-map', 'n_clicks'),
+         Input('btn-heatmap', 'n_clicks')]
     )
-    def generate_spatial_prediction(n_clicks, model_type, location, zone, year, fall_type):
-        if n_clicks is None or (location is None and zone is None):
-            return html.Div("Cliquez sur le bouton 'Probabilité Spatiale' après avoir sélectionné un point ou une zone.", 
-                           className="text-muted p-3")
+    def toggle_map_views(dist_clicks, heat_clicks):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            # État initial : afficher la distribution
+            return (
+                {'display': 'block'},
+                {'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
         
-        # Déterminer si on utilise un point ou une zone
-        if zone is not None:
-            lat, lon = zone['center_lat'], zone['center_lon']
-            radius = zone['radius']
-            location_type = "zone"
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == 'btn-distribution-map':
+            return (
+                {'display': 'block'},
+                {'display': 'none'},
+                'btn btn-primary me-2',
+                'btn btn-outline-primary'
+            )
         else:
-            lat, lon = location['lat'], location['lon']
-            radius = 2.5  # Rayon par défaut
-            location_type = "point"
-        
-        try:
-            # Récupérer les données mondiales
-            df = meteorite_data.get_filtered_data()
-            
-            # Données dans la région sélectionnée
-            nearby = df[
-                (df['reclat'].between(lat - radius * 2, lat + radius * 2)) &
-                (df['reclong'].between(lon - radius * 2, lon + radius * 2))
-            ]
-            
-            # S'il n'y a pas assez de données
-            if len(nearby) < 5:
-                return html.Div([
-                    html.H5([html.I(className="fas fa-exclamation-triangle me-2"), "Données insuffisantes"], 
-                           className="text-warning mb-3"),
-                    html.P("Pas assez de données historiques dans cette région pour générer une carte de probabilité."),
-                    html.P("Essayez de sélectionner une zone avec plus de météorites historiques.")
-                ], className="alert alert-warning")
-            
-            # Créer une grille de points pour la heatmap
-            grid_size = 20  # Résolution de la grille
-            lat_grid = np.linspace(lat - radius, lat + radius, grid_size)
-            lon_grid = np.linspace(lon - radius, lon + radius, grid_size)
-            
-            # Créer un maillage pour la grille
-            lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
-            
-            # Calculer la densité pour chaque point (utilisation d'un KDE simple pour l'exemple)
-            density = np.zeros((grid_size, grid_size))
-            for nlat, nlon in zip(nearby['reclat'], nearby['reclong']):
-                # Calculer la contribution de chaque météorite historique à la densité
-                # Formule simple de noyau gaussien
-                density += np.exp(-0.5 * ((lat_mesh - nlat)**2 + (lon_mesh - nlon)**2) / (radius/5)**2)
-            
-            # Normaliser les densités
-            if density.max() > 0:
-                density = density / density.max()
-            
-            # Créer un DataFrame pour la heatmap
-            heatmap_data = []
-            for i in range(grid_size):
-                for j in range(grid_size):
-                    if density[i, j] > 0.01:  # Ignorer les valeurs trop faibles
-                        heatmap_data.append({
-                            'lat': lat_mesh[i, j],
-                            'lon': lon_mesh[i, j],
-                            'probability': density[i, j]
-                        })
-            
-            heatmap_df = pd.DataFrame(heatmap_data)
-            
-            # Créer une carte de chaleur de probabilité
-            fig = px.density_mapbox(
-                heatmap_df,
-                lat='lat',
-                lon='lon',
-                z='probability',
-                radius=max(5, 20 * radius / 10),  # Ajuster le rayon en fonction de la taille de la zone
-                center=dict(lat=lat, lon=lon),
-                zoom=max(4, 10 - radius),  # Ajuster le zoom en fonction du rayon
-                color_continuous_scale='Viridis',
-                opacity=0.8,
-                labels={'probability': 'Probabilité relative'},
-                mapbox_style="carto-positron",
-                height=400
+            return (
+                {'display': 'none'},
+                {'display': 'block'},
+                'btn btn-outline-primary me-2',
+                'btn btn-primary'
             )
-            
-            # Ajouter le point ou la zone sélectionnée
-            if location_type == "zone":
-                # Ajouter un cercle pour montrer la zone
-                lats, lons = create_circle(lat, lon, radius)
-                fig.add_trace(go.Scattermapbox(
-                    lat=lats,
-                    lon=lons,
-                    mode='lines',
-                    line=dict(width=2, color='red'),
-                    name="Zone sélectionnée"
-                ))
-        else:
-                # Ajouter un marqueur pour le point
-                fig.add_trace(go.Scattermapbox(
-                    lat=[lat],
-                    lon=[lon],
-                    mode='markers',
-                    marker=dict(size=10, color='red'),
-                    name="Point sélectionné"
-                ))
-            
-            # Ajouter des marqueurs pour les météorites historiques
-            fig.add_trace(go.Scattermapbox(
-                lat=nearby['reclat'],
-                lon=nearby['reclong'],
-                mode='markers',
-                marker=dict(size=6, color='blue', opacity=0.7),
-                name="Météorites historiques",
-                hoverinfo='text',
-                hovertext=nearby.apply(
-                    lambda row: f"{row['name']}<br>Masse: {row['mass (g)']:.1f}g<br>Année: {int(row['year'])}", 
-                    axis=1
-                )
-            ))
-            
-            fig.update_layout(
-                margin=dict(l=0, r=0, t=0, b=0),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1,
-                    xanchor="left",
-                    x=0
-                )
-            )
-            
-            # Calculer des statistiques pour la zone
-            point_probability = 0
-            zone_probability = 0
-            
-            if len(nearby) > 0:
-                # Densité moyenne des météorites dans la région
-                region_area = 3.14159 * (radius * 111)**2  # Approximation de l'aire en km²
-                density_per_km2 = len(nearby) / region_area
-                
-                # Probabilité estimée pour un point spécifique (très approximative)
-                point_area = 0.01  # km²
-                point_probability = density_per_km2 * point_area * 100 * (1/100)  # Probabilité sur 100 ans
-                
-                # Probabilité pour la zone entière
-                zone_probability = min(95, len(nearby) / region_area * region_area * 100 * (1/100))  # Probabilité sur 100 ans
-            
-            # Préparer le texte de présentation
-            return html.Div([
-                html.H5([html.I(className="fas fa-globe me-2"), "Carte de Probabilité Spatiale"], 
-                       className="mb-3 text-primary"),
-                
-                # Carte et statistiques
-                html.Div([
-                    # Statistiques
-                    html.Div([
-                        html.H6("Probabilités estimées", className="mb-3"),
-                        
-                        html.Div([
-                            html.Div([
-                                html.Strong("Point précis:"),
-                                html.Div([
-                                    html.Span(f"{point_probability:.4f}%", 
-                                             className="text-primary fw-bold fs-5")
-                                ])
-                            ], className="p-3 bg-light rounded border mb-3"),
-                            
-                            html.Div([
-                                html.Strong("Zone entière:"),
-                                html.Div([
-                                    html.Span(f"{zone_probability:.2f}%", 
-                                             className="text-primary fw-bold fs-5")
-                                ])
-                            ], className="p-3 bg-light rounded border mb-3"),
-                            
-                            html.Div([
-                                html.Strong("Période:"),
-                                html.Div("Prochain siècle")
-                            ], className="text-muted small")
-                        ])
-                    ], className="col-md-3"),
-                    
-                    # Carte
-                    html.Div([
-                        dcc.Graph(
-                            figure=fig,
-                            config={'scrollZoom': True}
-                        )
-                    ], className="col-md-9")
-                ], className="row mb-3"),
-                
-                # Explication de la méthodologie
-                html.Div([
-                    html.H6("Interprétation", className="mb-2"),
-                    html.P([
-                        "Cette carte montre la probabilité relative de chute de météorite, basée sur ",
-                        html.Strong(f"{len(nearby)} météorites historiques "),
-                        "dans la région. Les zones en jaune-vert ont une probabilité plus élevée, ",
-                        "tandis que les zones en bleu foncé ont une probabilité plus faible. ",
-                        "Le modèle utilisé est basé sur une estimation par noyau (KDE) des densités spatiales."
-                    ], className="text-muted small")
-                ], className="mt-3 p-3 bg-light rounded border")
-                
-            ], className="p-3")
-            
-        except Exception as e:
-            import traceback
-            print(f"Erreur dans la prédiction spatiale: {str(e)}")
-            print(traceback.format_exc())
-            
-            return html.Div([
-                html.H5([html.I(className="fas fa-exclamation-circle me-2"), "Erreur"], 
-                       className="text-danger mb-3"),
-                html.P(f"Erreur lors de la génération de la carte de probabilité: {str(e)}"),
-                html.Details([
-                    html.Summary("Détails techniques", className="text-muted"),
-                    html.Pre(traceback.format_exc(), style={"whiteSpace": "pre-wrap", "fontSize": "0.8rem"})
-                ])
-            ], className="alert alert-danger")
-    
-    # Store pour stocker le rayon de la zone sélectionnée
-    @app.callback(
-        Output('selected-zone', 'data'),
-        [Input('select-zone-button', 'n_clicks'),
-         Input('zone-radius', 'value')],
-        [State('selected-location', 'data')]
-    )
-    def store_selected_zone(n_clicks, radius, location):
-        if n_clicks is None or n_clicks == 0 or location is None:
-            return None
-            
-        return {
-            'center_lat': location['lat'],
-            'center_lon': location['lon'],
-            'radius': radius
-        }
-    
-    # Callback pour mettre à jour les coordonnées sélectionnées
-    @app.callback(
-        Output('selected-coordinates', 'children'),
-        [Input('selected-location', 'data'),
-         Input('selected-zone', 'data')]
-    )
-    def update_selected_coordinates(location, zone):
-        if location is None:
-            return "Aucun point sélectionné. Cliquez sur la carte."
-        
-        if zone is not None:
-            return [
-                html.Strong("Zone sélectionnée:", className="d-block mb-2 text-success"),
-                html.Span("Centre: ", className="fw-bold"),
-                f"Lat: {zone['center_lat']:.4f}, Lon: {zone['center_lon']:.4f}",
-                html.Br(),
-                html.Span("Rayon: ", className="fw-bold"),
-                f"{zone['radius']}°",
-                html.Br(),
-                html.Span("Surface couverte: ", className="fw-bold"),
-                f"~{3.14159 * (zone['radius'] * 111)**2:.0f} km²"
-            ]
-        
-        return [
-            html.Strong("Point sélectionné:", className="d-block mb-2"),
-            html.Span("Latitude: ", className="fw-bold"),
-            f"{location['lat']:.4f}",
-            html.Br(),
-            html.Span("Longitude: ", className="fw-bold"),
-            f"{location['lon']:.4f}"
-        ]
