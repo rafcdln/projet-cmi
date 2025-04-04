@@ -18,7 +18,7 @@ DEFAULT_CLASSES = "all"
 DEFAULT_FALLS = ["Found", "Fell"]
 
 # Configuration du serveur
-PORT = 8051
+PORT = 8052
 DEBUG_MODE = True
 
 # Paramètres d'analyse de zone

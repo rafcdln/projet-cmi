@@ -287,4 +287,48 @@
 
 .zone-chart {
     height: 200px;
+}
+
+/* Styles pour la sidebar fixe des paramètres avancés */
+.prediction-sidebar {
+    position: sticky;
+    top: 20px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 15px;
+    margin-bottom: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+
+.prediction-sidebar h6 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 15px;
+    color: #1d1d1f;
+}
+
+.prediction-sidebar .form-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 5px;
+}
+
+.prediction-sidebar .parameter-container {
+    margin-bottom: 15px;
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+}
+
+.prediction-sidebar .slider-container {
+    margin-bottom: 20px;
+}
+
+.prediction-sidebar .info-icon {
+    font-size: 0.8rem;
+    color: #0071e3;
+    margin-left: 5px;
+    cursor: help;
 } 

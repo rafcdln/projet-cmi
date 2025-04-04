@@ -958,12 +958,12 @@ def register_callbacks(app, data_path):
     
     @app.callback(
         Output('zone-analysis-output', 'children'),
-        [Input('analyze-zone-button', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('analysis-radius', 'value')]
+        [Input('analyze-zone-button', 'n_clicks'),
+         Input('selected-location', 'data')],
+        [State('analysis-radius', 'value')]
     )
     def analyze_zone(n_clicks, location, analysis_radius):
-        if n_clicks is None or location is None:
+        if location is None:
             return ""
         
         # Analyse d'une zone autour du point sélectionné
@@ -2105,7 +2105,6 @@ def register_callbacks(app, data_path):
         
         return fig
 
-    # Callback pour l'évolution des masses au fil du temps
     @app.callback(
         Output('mass-time', 'figure'),
         [Input('mass-slider', 'value'),
@@ -2166,8 +2165,7 @@ def register_callbacks(app, data_path):
         )
         
         return fig
-
-    # Callback pour les prévisions
+    
     @app.callback(
         Output('forecast', 'figure'),
         [Input('mass-slider', 'value'),
@@ -2375,9 +2373,9 @@ def register_callbacks(app, data_path):
     @app.callback(
         [Output('temporal-prediction-output', 'children'),
          Output('temporal-prediction-chart', 'children')],
-        [Input('btn-temporal-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('forecast-horizon', 'value'),
+        [Input('btn-temporal-prediction', 'n_clicks'),
+         Input('selected-location', 'data')],
+        [State('forecast-horizon', 'value'),
          State('mass-prediction-range', 'value'),
          State('analysis-radius', 'value')]
     )
@@ -2395,7 +2393,7 @@ def register_callbacks(app, data_path):
         large_threshold_year_50 = None
         large_threshold_year_75 = None
         
-        if n_clicks is None or location is None:
+        if location is None:
             return html.Div([
                 html.H5("Sélectionnez un point et cliquez sur l'onglet", className="text-info"),
                 html.P([
@@ -2760,29 +2758,24 @@ def register_callbacks(app, data_path):
                                 html.Table(className="table table-bordered table-sm", children=[
                                     html.Thead(html.Tr([
                                         html.Th("Catégorie de Masse"),
-                                        html.Th("D'ici 2025"),
-                                        html.Th("D'ici 2030"),
-                                        html.Th("D'ici 2035"),
-                                        html.Th(f"D'ici {years[-1]}")
+                                        html.Th(f"D'ici {current_year + max(1, horizon//3)}"),
+                                        html.Th(f"D'ici {current_year + max(2, 2*horizon//3)}"),
+                                        html.Th(f"D'ici {current_year + horizon}")
                                     ])),
                                     html.Tbody([
                                         html.Tr([
                                             html.Td([
                                                 f"Petite masse ",
                                                 html.Br(),
-                                                html.Small(f"{mass_breaks[0]:.0f}g - {mass_breaks[1]:.0f}g")
+                                                html.Small(f"10g - 1000g")
                                             ]),
                                             html.Td(
-                                                f"{small_probs[min(5, len(small_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if small_probs[min(5, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(5, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(5, len(small_probs)-1)] >= 0.25 else ''}"
+                                                f"{small_probs[min(max(1, horizon//3), len(small_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if small_probs[min(max(1, horizon//3), len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(max(1, horizon//3), len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(max(1, horizon//3), len(small_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
-                                                f"{small_probs[min(10, len(small_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if small_probs[min(10, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(10, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(10, len(small_probs)-1)] >= 0.25 else ''}"
-                                            ),
-                                            html.Td(
-                                                f"{small_probs[min(15, len(small_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if small_probs[min(15, len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(15, len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(15, len(small_probs)-1)] >= 0.25 else ''}"
+                                                f"{small_probs[min(max(2, 2*horizon//3), len(small_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if small_probs[min(max(2, 2*horizon//3), len(small_probs)-1)] >= 0.75 else 'table-warning' if small_probs[min(max(2, 2*horizon//3), len(small_probs)-1)] >= 0.5 else 'table-info' if small_probs[min(max(2, 2*horizon//3), len(small_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
                                                 f"{small_probs[-1]:.0%}",
@@ -2793,19 +2786,15 @@ def register_callbacks(app, data_path):
                                             html.Td([
                                                 f"Masse moyenne ",
                                                 html.Br(),
-                                                html.Small(f"{mass_breaks[1]:.0f}g - {mass_breaks[2]:.0f}g")
+                                                html.Small(f"1000g - 100000g")
                                             ]),
                                             html.Td(
-                                                f"{medium_probs[min(5, len(medium_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if medium_probs[min(5, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(5, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(5, len(medium_probs)-1)] >= 0.25 else ''}"
+                                                f"{medium_probs[min(max(1, horizon//3), len(medium_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[min(max(1, horizon//3), len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(max(1, horizon//3), len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(max(1, horizon//3), len(medium_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
-                                                f"{medium_probs[min(10, len(medium_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if medium_probs[min(10, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(10, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(10, len(medium_probs)-1)] >= 0.25 else ''}"
-                                            ),
-                                            html.Td(
-                                                f"{medium_probs[min(15, len(medium_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if medium_probs[min(15, len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(15, len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(15, len(medium_probs)-1)] >= 0.25 else ''}"
+                                                f"{medium_probs[min(max(2, 2*horizon//3), len(medium_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if medium_probs[min(max(2, 2*horizon//3), len(medium_probs)-1)] >= 0.75 else 'table-warning' if medium_probs[min(max(2, 2*horizon//3), len(medium_probs)-1)] >= 0.5 else 'table-info' if medium_probs[min(max(2, 2*horizon//3), len(medium_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
                                                 f"{medium_probs[-1]:.0%}",
@@ -2816,19 +2805,15 @@ def register_callbacks(app, data_path):
                                             html.Td([
                                                 f"Grande masse ",
                                                 html.Br(),
-                                                html.Small(f"{mass_breaks[2]:.0f}g - {mass_breaks[3]:.0f}g")
+                                                html.Small(f"100000g - 10000000g")
                                             ]),
                                             html.Td(
-                                                f"{large_probs[min(5, len(large_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if large_probs[min(5, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(5, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(5, len(large_probs)-1)] >= 0.25 else ''}"
+                                                f"{large_probs[min(max(1, horizon//3), len(large_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if large_probs[min(max(1, horizon//3), len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(max(1, horizon//3), len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(max(1, horizon//3), len(large_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
-                                                f"{large_probs[min(10, len(large_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if large_probs[min(10, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(10, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(10, len(large_probs)-1)] >= 0.25 else ''}"
-                                            ),
-                                            html.Td(
-                                                f"{large_probs[min(15, len(large_probs)-1)]:.0%}",
-                                                className=f"{'table-danger' if large_probs[min(15, len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(15, len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(15, len(large_probs)-1)] >= 0.25 else ''}"
+                                                f"{large_probs[min(max(2, 2*horizon//3), len(large_probs)-1)]:.0%}",
+                                                className=f"{'table-danger' if large_probs[min(max(2, 2*horizon//3), len(large_probs)-1)] >= 0.75 else 'table-warning' if large_probs[min(max(2, 2*horizon//3), len(large_probs)-1)] >= 0.5 else 'table-info' if large_probs[min(max(2, 2*horizon//3), len(large_probs)-1)] >= 0.25 else ''}"
                                             ),
                                             html.Td(
                                                 f"{large_probs[-1]:.0%}",
@@ -2842,7 +2827,7 @@ def register_callbacks(app, data_path):
                                     html.H6("Années clés:"),
                                     html.Div([
                                         html.Div([
-                                            html.Strong("Petite masse:"),
+                                            html.Strong("Petite masse (10g - 1000g):"),
                                             html.Ul([
                                                 html.Li(f"25% de probabilité: {small_threshold_year_25 if small_threshold_year_25 else 'Après ' + str(years[-1])}", 
                                                        className="text-info"),
@@ -2853,7 +2838,7 @@ def register_callbacks(app, data_path):
                                             ])
                                         ], className="col-md-4"),
                                         html.Div([
-                                            html.Strong("Masse moyenne:"),
+                                            html.Strong("Masse moyenne (1000g - 100000g):"),
                                             html.Ul([
                                                 html.Li(f"25% de probabilité: {medium_threshold_year_25 if medium_threshold_year_25 else 'Après ' + str(years[-1])}", 
                                                        className="text-info"),
@@ -2864,7 +2849,7 @@ def register_callbacks(app, data_path):
                                             ])
                                         ], className="col-md-4"),
                                         html.Div([
-                                            html.Strong("Grande masse:"),
+                                            html.Strong("Grande masse (100000g - 10000000g):"),
                                             html.Ul([
                                                 html.Li(f"25% de probabilité: {large_threshold_year_25 if large_threshold_year_25 else 'Après ' + str(years[-1])}", 
                                                        className="text-info"),
@@ -3543,14 +3528,14 @@ def register_callbacks(app, data_path):
 
     @app.callback(
         Output('spatial-prediction-output', 'children'),
-        [Input('btn-spatial-prediction', 'n_clicks')],
-        [State('selected-location', 'data'),
-         State('analysis-radius', 'value')]
+        [Input('btn-spatial-prediction', 'n_clicks'),
+         Input('selected-location', 'data')],
+        [State('analysis-radius', 'value')]
     )
     def update_spatial_prediction(n_clicks, location, analysis_radius):
         debug_callback("Mise à jour des prévisions spatiales")
         
-        if n_clicks is None or location is None:
+        if location is None:
             return html.Div([
                 html.H5("Sélectionnez un point et cliquez sur l'onglet", className="text-info"),
                 html.P([

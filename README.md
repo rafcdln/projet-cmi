@@ -144,6 +144,10 @@ Ce projet est distribué sous licence MIT. Voir le fichier `LICENSE` pour plus d
 Pour toute question ou suggestion concernant ce projet, veuillez contacter:
 - email@exemple.com
 
+## Documentation
+
+- [Rapport détaillé sur le fonctionnement de la section prédiction](docs/section_prediction.md)
+
 ---
 
 © 2023 Dashboard Météorites | Développé avec ❤️ et Python
