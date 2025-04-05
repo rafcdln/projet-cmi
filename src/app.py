@@ -1,17 +1,15 @@
 """
 Point d'entrée de l'application d'analyse de météorites.
-Lance le serveur Dash pour le tableau de bord interactif.
+Lance le serveur Dash pour le tableau de bord interactif multi-pages.
 """
 import dash
-from dash import Dash, html
+from dash import Dash, html, page_container
 import dash_bootstrap_components as dbc
 import traceback
 import sys
 from flask import Flask, request, Response
 import json
 import time
-from components.view import create_layout
-from components.controller import register_callbacks
 from utils.config import DATA_PATH, PORT, DEBUG_MODE, STOP_ON_ERROR, VERBOSE_ERRORS
 
 def format_error(e, environ=None):
@@ -20,18 +18,18 @@ def format_error(e, environ=None):
     """
     error_class = e.__class__.__name__
     error_msg = str(e)
-    
+
     # Tracer l'erreur
     trace = traceback.format_exc()
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    
+
     # Informations sur la requête si disponible
     request_info = ""
     if environ:
         path = environ.get('PATH_INFO', 'Chemin inconnu')
         method = environ.get('REQUEST_METHOD', 'Méthode inconnue')
         request_info = f"Requête: {method} {path}\n"
-    
+
     # Formater le message complet
     error_text = f"""
 =============== ERREUR APPLICATION [{timestamp}] ===============
@@ -43,14 +41,14 @@ Traceback:
 {trace}
 ================================================================
 """
-    
+
     return error_text
 
 # Fonction pour capturer les erreurs non gérées
 class ErrorCatchingMiddleware:
     def __init__(self, app):
         self.app = app
-        
+
     def __call__(self, environ, start_response):
         try:
             return self.app(environ, start_response)
@@ -58,12 +56,12 @@ class ErrorCatchingMiddleware:
             # Capturer l'erreur et la tracer
             error_text = format_error(e, environ)
             print(error_text, file=sys.stderr)
-            
+
             # Si configuré pour arrêter le programme en cas d'erreur
             if STOP_ON_ERROR:
                 print("Arrêt du programme demandé après erreur.")
                 sys.exit(1)
-            
+
             # Sinon, continuer et afficher une réponse d'erreur
             if request.headers.get('Content-Type') == 'application/json':
                 # Réponse JSON pour les requêtes AJAX
@@ -80,20 +78,19 @@ class ErrorCatchingMiddleware:
                     html.Pre(f"Type: {e.__class__.__name__}"),
                     html.Pre(f"Message: {str(e)}"),
                     html.Hr(),
-                    html.Pre(traceback.format_exc() if VERBOSE_ERRORS else "Les détails de l'erreur ont été enregistrés.", 
+                    html.Pre(traceback.format_exc() if VERBOSE_ERRORS else "Les détails de l'erreur ont été enregistrés.",
                              style={'whiteSpace': 'pre-wrap', 'wordBreak': 'break-word'})
                 ]).to_string()
-                
+
                 response_headers = [
                     ('Content-Type', 'text/html'),
                     ('Content-Length', str(len(response_body)))
                 ]
-                
+
                 start_response('500 Internal Server Error', response_headers)
                 return [response_body.encode('utf-8')]
 
-# Initialisation de l'application Dash
-# Les assets sont automatiquement chargés depuis le dossier /assets à l'intérieur du dossier où se trouve ce fichier (src/assets)
+# Initialisation de l'application Dash avec support multi-pages
 server = Flask(__name__)
 app = Dash(
     __name__,
@@ -103,7 +100,9 @@ app = Dash(
         'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
         'https://use.fontawesome.com/releases/v5.15.4/css/all.css'
     ],
-    suppress_callback_exceptions=True  # Supprimer les exceptions de callback
+    use_pages=True,  # Activer le système de pages
+    suppress_callback_exceptions=True,  # Supprimer les exceptions de callback
+    assets_folder='src/assets'  # Spécifier explicitement le dossier des assets
 )
 
 # Configuration pour Plotly Express
@@ -152,7 +151,7 @@ def safe_build_dataframe(*args, **kwargs):
             print("\n" + "="*80)
             print("ERREUR DE TYPES COLONNES DÉTECTÉE DANS PLOTLY EXPRESS")
             print("Message d'erreur:", str(e))
-            
+
             # Analyse des args pour trouver le dataframe
             if len(args) > 0 and isinstance(args[0], dict) and 'args' in args[0]:
                 data_args = args[0]['args']
@@ -161,7 +160,7 @@ def safe_build_dataframe(*args, **kwargs):
                     print("\nColonnes et types:")
                     for col, dtype in df.dtypes.items():
                         print(f"  - {col}: {dtype}")
-                    
+
                     # Tenter de corriger automatiquement pour les prochains appels
                     print("\nConseil: Convertissez toutes les colonnes au même type avant de les passer à Plotly Express.")
             print("="*80 + "\n")
@@ -175,10 +174,48 @@ plotly.express._core.build_dataframe = safe_build_dataframe
 # Ajouter le middleware de capture d'erreurs
 server.wsgi_app = ErrorCatchingMiddleware(server.wsgi_app)
 
+# Configuration de l'application
 app.title = 'Dashboard Météorites'
-app.layout = create_layout()
 
-# Enregistrement des callbacks interactifs
+# Définir le layout principal avec le conteneur de pages
+app.layout = html.Div([
+    # Barre de navigation commune à toutes les pages
+    dbc.Navbar(
+        dbc.Container(
+            [
+                dbc.NavbarBrand("Analyse des Météorites", href="/", className="ms-2",
+                                style={'fontWeight': '500', 'fontSize': '22px'}),
+                dbc.Nav(
+                    [
+                        dbc.NavItem(dbc.NavLink("Accueil", href="/")),
+                        dbc.NavItem(dbc.NavLink("Carte Mondiale", href="/map")),
+                        dbc.NavItem(dbc.NavLink("Analyse de Données", href="/analysis")),
+                        dbc.NavItem(dbc.NavLink("Prédictions", href="/predictions")),
+                    ],
+                    className="ms-auto",
+                    navbar=True,
+                ),
+            ]
+        ),
+        color="light",
+        className="mb-4",
+    ),
+
+    # Conteneur qui affichera le contenu de la page active
+    page_container,
+
+    # Pied de page
+    html.Footer(
+        dbc.Container([
+            html.Hr(),
+            html.P("Dashboard d'analyse de météorites © 2023", className="text-center text-muted")
+        ]),
+        className="mt-5"
+    )
+])
+
+# Initialisation des modèles et enregistrement des callbacks
+from components.controller import register_callbacks
 register_callbacks(app, DATA_PATH)
 
 # Lancement du serveur
@@ -188,5 +225,5 @@ if __name__ == '__main__':
     print(f"Arrêt sur erreur: {'Activé' if STOP_ON_ERROR else 'Désactivé'}")
     print(f"Verbosité des erreurs: {'Activée' if VERBOSE_ERRORS else 'Désactivée'}")
     print("\nPour changer ces paramètres, modifiez le fichier 'src/utils/config.py'")
-    
+
     app.run_server(debug=DEBUG_MODE, port=PORT)

@@ -48,23 +48,6 @@ def create_layout():
                         }
                     ),
                     html.Div([
-                        # Filtre de masse
-                        html.Div([
-                            html.Label([
-                                'Plage de masse (g)',
-                                html.I(className='fas fa-info-circle ms-2', id='mass-slider-info', style={'cursor': 'pointer'})
-                            ], className='form-label'),
-                            dcc.RangeSlider(
-                                id='mass-slider',
-                                min=0,
-                                max=6,
-                                step=0.1,
-                                marks={i: f'10^{i}' for i in range(7)},
-                                value=[0, 6],
-                                tooltip={"placement": "bottom", "always_visible": True}
-                            ),
-                        ], className='mb-4'),
-                        
                         # Mode de couleur
                         html.Div([
                             html.Label([
@@ -157,14 +140,32 @@ def create_layout():
                             dcc.Dropdown(
                                 id='map-style-dropdown',
                                 options=[
-                                    {'label': 'Clair', 'value': 'clair'},
-                                    {'label': 'Sombre', 'value': 'sombre'},
-                                    {'label': 'Standard', 'value': 'standard'}
+                                    {'label': 'Carte standard', 'value': 'carto-positron'},
+                                    {'label': 'Satellite', 'value': 'satellite-streets'},
+                                    {'label': 'Noir et blanc', 'value': 'carto-darkmatter'},
+                                    {'label': 'Hybride', 'value': 'satellite'}
                                 ],
-                                value=DEFAULT_MAP_STYLE,
+                                value='carto-positron',
                                 clearable=False,
                                 searchable=False,
                                 className='modern-dropdown'
+                            ),
+                        ], className='mb-4'),
+                        
+                        # Filtre de masse
+                        html.Div([
+                            html.Label([
+                                'Plage de masse (g)',
+                                html.I(className='fas fa-info-circle ms-2', id='mass-slider-info', style={'cursor': 'pointer'})
+                            ], className='form-label'),
+                            dcc.RangeSlider(
+                                id='mass-slider',
+                                min=0,
+                                max=6,
+                                step=0.1,
+                                marks={i: f'10^{i}' for i in range(7)},
+                                value=[0, 6],
+                                tooltip={"placement": "bottom", "always_visible": True}
                             ),
                         ], className='mb-4'),
                         
@@ -628,7 +629,7 @@ def create_layout():
                                     style={
                                         'height': '650px',
                                         'border': '1px solid #e2e2e2',
-                                        'border-radius': '5px'
+                                        'borderRadius': '5px'
                                     },
                                     className='shadow-sm'
                                 ),
@@ -726,7 +727,7 @@ def create_layout():
                                             type="circle",
                                             children=html.Div(id='prediction-output', className='p-3')
                                         )
-                                    ], id='prediction-results-content', style={'min-height': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    ], id='prediction-results-content', style={'minHeight': '350px', 'overflow': 'auto', 'border': '1px solid #f0f0f0', 'borderRadius': '5px'}),
                                     
                                     html.Div([
                                         dcc.Loading(
@@ -734,7 +735,7 @@ def create_layout():
                                             type="circle",
                                             children=html.Div(id='zone-analysis-output', className='p-3')
                                         )
-                                    ], id='zone-analysis-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    ], id='zone-analysis-content', style={'minHeight': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'borderRadius': '5px'}),
                                     
                                     html.Div([
                                         dcc.Loading(
@@ -747,7 +748,7 @@ def create_layout():
                                                 html.Div(id='temporal-prediction-output', className='mt-3')
                                             ], className='p-3')
                                         )
-                                    ], id='temporal-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    ], id='temporal-prediction-content', style={'minHeight': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'borderRadius': '5px'}),
                                     
                                     html.Div([
                                         dcc.Loading(
@@ -760,7 +761,7 @@ def create_layout():
                                                 html.Div(id='spatial-prediction-output', className='mt-3')
                                             ], className='p-3')
                                         )
-                                    ], id='spatial-prediction-content', style={'min-height': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'border-radius': '5px'}),
+                                    ], id='spatial-prediction-content', style={'minHeight': '350px', 'overflow': 'auto', 'display': 'none', 'border': '1px solid #f0f0f0', 'borderRadius': '5px'}),
                                 ]),
                                 
                                 # Paramètres de prédiction avancés

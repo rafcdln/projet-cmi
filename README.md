@@ -32,12 +32,26 @@ Application web interactive pour l'analyse et la visualisation de données sur l
 
 ```
 dashboard/
+├── assets/                 # Ressources statiques globales
 ├── data/                   # Données (CSV des météorites)
+├── docs/                   # Documentation détaillée
+├── models/                 # Modèles ML entraînés et sauvegardés
 ├── src/                    # Code source
 │   ├── assets/            # Ressources statiques (CSS, images)
-│   ├── components/        # Composants de l'interface
+│   ├── callbacks/         # Callbacks Dash pour chaque page
+│   ├── components/        # Composants réutilisables de l'interface
+│   │   ├── controller.py  # Logique de contrôle principale
+│   │   └── view.py        # Éléments d'interface réutilisables
 │   ├── models/           # Modèles de données et ML
+│   │   ├── ml_model.py    # Modèle de machine learning
+│   │   └── model.py       # Modèle de données
+│   ├── pages/            # Pages du dashboard multi-pages
+│   │   ├── home.py        # Page d'accueil
+│   │   ├── map.py         # Page de carte mondiale
+│   │   ├── analysis.py    # Page d'analyse de données
+│   │   └── predictions.py # Page de prédictions
 │   ├── utils/            # Utilitaires
+│   │   └── config.py      # Configuration globale
 │   ├── app.py           # Point d'entrée de l'application
 │   └── __init__.py      # Fichier d'initialisation du package
 ├── venv/                  # Environnement virtuel Python
@@ -57,10 +71,10 @@ dashboard/
 2. **Créer un environnement virtuel** (recommandé)
    ```bash
    python -m venv venv
-   
+
    # Sur Windows
    venv\Scripts\activate
-   
+
    # Sur macOS/Linux
    source venv/bin/activate
    ```
@@ -81,8 +95,8 @@ dashboard/
    ```
 
 5. **Accéder au dashboard**
-   
-   Ouvrez votre navigateur à l'adresse: [http://127.0.0.1:8051/](http://127.0.0.1:8051/)
+
+   Ouvrez votre navigateur à l'adresse: [http://127.0.0.1:8054/](http://127.0.0.1:8054/)
 
 ## Utilisation
 
@@ -130,10 +144,13 @@ Chaque entrée comprend:
 ### Extension du Projet
 
 Pour ajouter de nouvelles fonctionnalités:
-1. Modifiez `src/components/view.py` pour l'interface utilisateur
-2. Implémentez la logique correspondante dans `src/components/controller.py`
-3. Si nécessaire, ajoutez des modèles dans `src/models/`
-4. Mettez à jour la configuration dans `src/utils/config.py`
+1. Créez ou modifiez une page dans `src/pages/`
+2. Ajoutez les callbacks correspondants dans `src/callbacks/`
+3. Pour les composants réutilisables, modifiez `src/components/view.py`
+4. Pour la logique commune, modifiez `src/components/controller.py`
+5. Si nécessaire, ajoutez ou modifiez les modèles dans `src/models/`
+6. Mettez à jour la configuration dans `src/utils/config.py`
+7. Les modèles ML entraînés sont sauvegardés dans le dossier `models/` à la racine du projet
 
 ## Licence
 
@@ -150,4 +167,4 @@ Pour toute question ou suggestion concernant ce projet, veuillez contacter:
 
 ---
 
-© 2023 Dashboard Météorites | Développé avec ❤️ et Python
+© 2025 Dashboard Météorites | Développé avec ❤️ et Python

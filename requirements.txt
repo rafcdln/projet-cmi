@@ -4,7 +4,7 @@ dash-core-components==2.0.0
 dash-html-components==2.0.0
 plotly==5.14.1
 pandas==2.0.0
-numpy==1.24.3
+numpy
 scikit-learn==1.2.2
 gunicorn==21.2.0
 joblib==1.2.0

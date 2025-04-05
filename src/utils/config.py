@@ -18,7 +18,7 @@ DEFAULT_CLASSES = "all"
 DEFAULT_FALLS = ["Found", "Fell"]
 
 # Configuration du serveur
-PORT = 8052
+PORT = 8056
 DEBUG_MODE = True
 
 # Paramètres d'analyse de zone
@@ -53,4 +53,4 @@ COLOR_SCALES = {
 
 # Configuration du débogage
 STOP_ON_ERROR = False  # Si True, l'application s'arrêtera en cas d'erreur au lieu de continuer
-VERBOSE_ERRORS = True  # Si True, affiche des informations détaillées sur les erreurs 
+VERBOSE_ERRORS = True  # Si True, affiche des informations détaillées sur les erreurs
