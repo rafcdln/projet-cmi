@@ -1929,61 +1929,21 @@ def register_callbacks(app, data_path):
             indices = selected_data.get('indices')
             df = df.iloc[indices]
 
-        # Regrouper les classes pour une meilleure lisibilité
-        def simplify_class(class_name):
-            if 'Iron' in class_name:
-                return 'Météorites de fer'
-            if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
-                return 'Métallo-rocheuses'
-            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
-                return 'Achondrites HED'
-            if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
-                return 'Autres achondrites'
-            if class_name.startswith('H'):
-                return 'Chondrites H'
-            if class_name.startswith('L'):
-                return 'Chondrites L'
-            if class_name.startswith('LL'):
-                return 'Chondrites LL'
-            if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
-                return 'Chondrites carbonées'
-            if class_name.startswith('E'):
-                return 'Chondrites E'
-            if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
-                return 'Météorites martiennes'
-            if 'Lunar' in class_name:
-                return 'Météorites lunaires'
-            return 'Autres'
-
-        # Appliquer la fonction de regroupement
-        df['class_group'] = df['recclass'].apply(simplify_class)
-
-        # Compter les occurrences de chaque groupe
-        class_counts = df['class_group'].value_counts().reset_index()
-        class_counts.columns = ['class_group', 'count']
-
-        # Trier par nombre décroissant
-        class_counts = class_counts.sort_values('count', ascending=False)
-
-        # Limiter à 10 classes pour la lisibilité
-        if len(class_counts) > 10:
-            other_count = class_counts.iloc[10:]['count'].sum()
-            class_counts = class_counts.iloc[:10]
-            class_counts = pd.concat([class_counts, pd.DataFrame([{'class_group': 'Autres', 'count': other_count}])])
-
-        # Créer le graphique en barres avec go.Figure
-        colors = px.colors.qualitative.Pastel[:len(class_counts)]
-
-        fig = go.Figure()
-
-        # Ajouter les barres
-        for i, (_, row) in enumerate(class_counts.iterrows()):
-            fig.add_trace(go.Bar(
-                x=[row['class_group']],
-                y=[row['count']],
-                name=row['class_group'],
-                marker_color=colors[i % len(colors)]
-            ))
+        # Calculer la distribution des classes
+        class_counts = df['recclass'].value_counts().nlargest(10)
+        
+        # Créer le graphique à barres
+        fig = go.Figure(go.Bar(
+            x=class_counts.index,
+            y=class_counts.values,
+            text=class_counts.values,
+            hoverinfo='x+y',
+            marker=dict(
+                color=class_counts.values,
+                colorscale='Viridis',
+                showscale=False
+            )
+        ))
 
         # Mise en page
         fig.update_layout(
