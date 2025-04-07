@@ -11,9 +11,10 @@ import pickle
 import time
 
 class MeteoriteML:
-    def __init__(self, data, models_dir='models'):
+    def __init__(self, data, models_dir='models', verbose=True):
         self.data = data
         self.models_dir = models_dir
+        self.verbose = verbose
         self.le = LabelEncoder()
         self.mass_scaler = StandardScaler()  # Scaler spécifique pour la prédiction de masse
         self.class_scaler = StandardScaler()  # Scaler spécifique pour la classification
@@ -50,10 +51,12 @@ class MeteoriteML:
         """Entraîne le modèle de prédiction de masse si nécessaire"""
         # Vérifier si le modèle est déjà entraîné
         if not force_train and hasattr(self.mass_predictor, 'feature_importances_'):
-            print("Le modèle de prédiction de masse est déjà entraîné.")
+            if self.verbose:
+                print("Le modèle de prédiction de masse est déjà entraîné.")
             return 0.0  # Retourne une valeur par défaut pour l'erreur
 
-        print("Entraînement du modèle de prédiction de masse...")
+        if self.verbose:
+            print("Entraînement du modèle de prédiction de masse...")
         # Préparation des features pour la prédiction de la masse
         features = ['reclat', 'reclong', 'year', 'fall_encoded']
         X = self.data[features]
@@ -72,7 +75,8 @@ class MeteoriteML:
         # Sauvegarder le modèle entraîné
         self.save_models()
 
-        print(f"Modèle de prédiction de masse entraîné avec RMSE: {rmse:.4f}")
+        if self.verbose:
+            print(f"Modèle de prédiction de masse entraîné avec RMSE: {rmse:.4f}")
         return rmse
 
     def predict_mass(self, lat, lon, year, fall):
@@ -96,7 +100,8 @@ class MeteoriteML:
 
             # Vérifier que le modèle est entraîné
             if not hasattr(self.mass_scaler, 'mean_') or not hasattr(self.mass_predictor, 'feature_importances_'):
-                print("Le modèle de prédiction de masse n'est pas encore entraîné. Entraînement en cours...")
+                if self.verbose:
+                    print("Le modèle de prédiction de masse n'est pas encore entraîné. Entraînement en cours...")
                 self.train_mass_predictor(force_train=True)
 
             # Normalisation des features avec le mass_scaler
@@ -118,8 +123,9 @@ class MeteoriteML:
 
         except Exception as e:
             import traceback
-            print(f"Erreur dans la prédiction de masse: {str(e)}")
-            print(traceback.format_exc())
+            if self.verbose:
+                print(f"Erreur dans la prédiction de masse: {str(e)}")
+                print(traceback.format_exc())
             # Retourner une valeur par défaut en cas d'erreur
             return 10.0  # Valeur par défaut raisonnable
 
@@ -127,10 +133,12 @@ class MeteoriteML:
         """Entraîne le modèle de classification si nécessaire"""
         # Vérifier si le modèle est déjà entraîné
         if not force_train and hasattr(self.class_predictor, 'feature_importances_'):
-            print("Le modèle de classification est déjà entraîné.")
+            if self.verbose:
+                print("Le modèle de classification est déjà entraîné.")
             return 0.0  # Retourne une valeur par défaut pour l'accuracy
 
-        print("Entraînement du modèle de classification...")
+        if self.verbose:
+            print("Entraînement du modèle de classification...")
         # Préparation des features pour la classification
         features = ['reclat', 'reclong', 'mass (g)', 'year', 'fall_encoded']
         X = self.data[features]
@@ -148,7 +156,8 @@ class MeteoriteML:
         # Sauvegarder le modèle entraîné (si pas déjà fait par train_mass_predictor)
         self.save_models()
 
-        print(f"Modèle de classification entraîné avec une précision de: {accuracy:.4f}")
+        if self.verbose:
+            print(f"Modèle de classification entraîné avec une précision de: {accuracy:.4f}")
         return accuracy
 
     def cluster_locations(self):
@@ -186,10 +195,12 @@ class MeteoriteML:
             joblib.dump(self.mass_scaler, os.path.join(self.models_dir, 'mass_scaler.joblib'))
             joblib.dump(self.class_scaler, os.path.join(self.models_dir, 'class_scaler.joblib'))
 
-            print(f"Modèles sauvegardés avec succès dans {self.models_dir}")
+            if self.verbose:
+                print(f"Modèles sauvegardés avec succès dans {self.models_dir}")
             return True
         except Exception as e:
-            print(f"Erreur lors de la sauvegarde des modèles: {str(e)}")
+            if self.verbose:
+                print(f"Erreur lors de la sauvegarde des modèles: {str(e)}")
             return False
 
     def load_models(self):
@@ -198,7 +209,8 @@ class MeteoriteML:
             # Vérifier si le fichier pickle existe
             pickle_path = os.path.join(self.models_dir, 'meteorite_models.pkl')
             if os.path.exists(pickle_path):
-                print("Chargement des modèles depuis le fichier pickle...")
+                if self.verbose:
+                    print("Chargement des modèles depuis le fichier pickle...")
                 with open(pickle_path, 'rb') as f:
                     models_data = pickle.load(f)
 
@@ -208,22 +220,27 @@ class MeteoriteML:
                 self.class_scaler = models_data['class_scaler']
                 self.fall_le = models_data['fall_le']
 
-                print(f"Modèles chargés avec succès (timestamp: {models_data.get('timestamp', 'inconnu')})")
+                if self.verbose:
+                    print(f"Modèles chargés avec succès (timestamp: {models_data.get('timestamp', 'inconnu')})")
                 return True
 
             # Alternative: vérifier les fichiers joblib individuels
             elif os.path.exists(os.path.join(self.models_dir, 'mass_predictor.joblib')):
-                print("Chargement des modèles depuis les fichiers joblib individuels...")
+                if self.verbose:
+                    print("Chargement des modèles depuis les fichiers joblib individuels...")
                 self.mass_predictor = joblib.load(os.path.join(self.models_dir, 'mass_predictor.joblib'))
                 self.class_predictor = joblib.load(os.path.join(self.models_dir, 'class_predictor.joblib'))
                 self.mass_scaler = joblib.load(os.path.join(self.models_dir, 'mass_scaler.joblib'))
                 self.class_scaler = joblib.load(os.path.join(self.models_dir, 'class_scaler.joblib'))
-                print("Modèles chargés avec succès depuis les fichiers joblib")
+                if self.verbose:
+                    print("Modèles chargés avec succès depuis les fichiers joblib")
                 return True
             else:
-                print("Aucun modèle pré-entraîné trouvé. Les modèles seront entraînés.")
+                if self.verbose:
+                    print("Aucun modèle pré-entraîné trouvé. Les modèles seront entraînés.")
                 return False
         except Exception as e:
-            print(f"Erreur lors du chargement des modèles: {str(e)}")
-            print("Les modèles seront entraînés à nouveau.")
+            if self.verbose:
+                print(f"Erreur lors du chargement des modèles: {str(e)}")
+                print("Les modèles seront entraînés à nouveau.")
             return False

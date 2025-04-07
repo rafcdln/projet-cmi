@@ -1,4 +1,5 @@
 from dash import Input, Output, State, callback, html
+import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 from models.model import MeteoriteData
@@ -40,28 +41,35 @@ def register_callbacks(app, data_path):
         global meteorite_data, ml_model
 
         # Chargement des données météorites
-        meteorite_data = MeteoriteData(data_path)
+        # En mode debug, on désactive les messages de chargement pour éviter la duplication
+        # car Dash recharge l'application au démarrage en mode debug
+        from utils.config import DEBUG_MODE
+        meteorite_data = MeteoriteData(data_path, verbose=not DEBUG_MODE)
 
         # Initialisation du modèle de machine learning avec chargement des modèles existants
         models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
-        ml_model = MeteoriteML(meteorite_data.data, models_dir=models_dir)
+        ml_model = MeteoriteML(meteorite_data.data, models_dir=models_dir, verbose=not DEBUG_MODE)
 
         # Les modèles sont chargés automatiquement dans __init__ s'ils existent
         # Sinon, on les entraîne
         try:
             # Vérifier si les modèles ont été chargés avec succès
             if not hasattr(ml_model.mass_predictor, 'feature_importances_'):
-                print("Entraînement du modèle de prédiction de masse...")
+                if not DEBUG_MODE:
+                    print("Entraînement du modèle de prédiction de masse...")
                 ml_model.train_mass_predictor()
 
             if not hasattr(ml_model.class_predictor, 'feature_importances_'):
-                print("Entraînement du modèle de classification...")
+                if not DEBUG_MODE:
+                    print("Entraînement du modèle de classification...")
                 ml_model.train_class_predictor()
 
-            print("Modèles prêts à l'utilisation")
+            if not DEBUG_MODE:
+                print("Modèles prêts à l'utilisation")
         except Exception as e:
-            print(f"ERREUR lors de l'initialisation des modèles: {str(e)}")
-            print(traceback.format_exc())
+            if not DEBUG_MODE:
+                print(f"ERREUR lors de l'initialisation des modèles: {str(e)}")
+                print(traceback.format_exc())
 
         # Configuration des styles de carte
         map_style_options = {
@@ -93,7 +101,8 @@ def register_callbacks(app, data_path):
                 yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                 plot_bgcolor='white',
                 margin=dict(l=20, r=20, t=20, b=20),
-                height=300
+                height=300,
+                title=None  # Définir explicitement title à None pour éviter les erreurs
             )
             return fig
 
@@ -874,16 +883,32 @@ def register_callbacks(app, data_path):
             fall_factor = 1.2 if fall == 'Fell' else 1.0
 
             # Facteur 4: Horizon (les prédictions pour un horizon plus long sont moins fiables, mais plus probables)
-            time_factor = max(0.5, min(1.0, horizon / 50.0))  # Plus l'horizon est long, plus la probabilité augmente
+            # Ajustement: réduire l'impact de l'horizon pour des prédictions plus réalistes
+            time_factor = max(0.3, min(0.8, horizon / 100.0))  # Plus l'horizon est long, plus la probabilité augmente, mais de façon plus modérée
 
-            # Calculer la probabilité finale (ajuster selon vos besoins)
-            base_probability = 0.01  # Probabilité de base très faible
-            impact_probability = base_probability * proximity_factor * density_factor * fall_factor * time_factor
-            impact_probability = min(0.98, impact_probability * horizon / 10)  # Augmente avec l'horizon, plafonné à 98%
+            # Calculer la probabilité d'impact avec une approche plus réaliste et dynamique
+            # La probabilité globale qu'une météorite tombe quelque part sur Terre est relativement élevée
+            # Mais la probabilité qu'elle tombe sur un point spécifique est extrêmement faible
 
-            # Calculer l'indice de confiance (0-100)
-            confidence_score = int((proximity_factor * 0.4 + density_factor * 0.4 + (1 - time_factor) * 0.2) * 100)
-            confidence_class = "danger" if confidence_score < 30 else "warning" if confidence_score < 70 else "success"
+            # Probabilité de base plus élevée pour refléter la réalité des chutes de météorites sur Terre
+            # Environ 500-1000 météorites de taille significative atteignent la Terre chaque année
+            base_probability = 0.02  # 2% de probabilité de base pour la zone sélectionnée sur l'horizon temporel
+
+            # Ajuster selon la densité historique (zones avec plus de météorites ont plus de chances d'en recevoir)
+            density_adjustment = 0.5 + (density_factor * 1.5)  # Entre 0.5 et 2.0
+
+            # Ajuster selon l'horizon temporel (plus l'horizon est long, plus la probabilité augmente)
+            time_adjustment = 0.5 + (horizon / 20)  # Entre 0.5 et 1.5 pour un horizon de 0-20 ans
+
+            # Calculer la probabilité finale
+            impact_probability = base_probability * density_adjustment * time_adjustment
+
+            # Limiter à un maximum réaliste de 15% pour les zones à haute densité et horizons longs
+            impact_probability = min(0.15, impact_probability)
+
+            # Calculer l'indice de confiance (0-100) en donnant plus de poids à la densité des données
+            confidence_score = int((proximity_factor * 0.35 + density_factor * 0.45 + (1 - time_factor) * 0.2) * 100)
+            confidence_class = "danger" if confidence_score < 40 else "warning" if confidence_score < 75 else "success"
 
             # Créer la visualisation de probabilité avec une jauge
             probability_gauge = html.Div([
@@ -898,10 +923,26 @@ def register_callbacks(app, data_path):
 
             # Créer les facteurs explicatifs de la prédiction
             factors_explanation = html.Div([
-                html.H6("Facteurs de prédiction", className="mt-3 mb-2"),
+                html.Div([
+                    html.H6("Facteurs de prédiction", className="mt-3 mb-2 d-inline-block"),
+                    html.I(className="fas fa-info-circle ms-2", id="factors-info", style={"cursor": "pointer"}),
+                    dbc.Tooltip(
+                        "Ces facteurs représentent les principales variables qui influencent la prédiction. Chaque facteur est normalisé sur une échelle de 0 à 1, où 1 représente l'influence maximale positive sur la probabilité d'impact.",
+                        target="factors-info",
+                        placement="top"
+                    )
+                ], className="d-flex align-items-center"),
                 html.Div([
                     html.Div([
-                        html.P("Proximité"),
+                        html.Div([
+                                html.P("Proximité", className="mb-1 d-inline-block"),
+                                html.I(className="fas fa-info-circle ms-2", id="proximity-info", style={"cursor": "pointer", "fontSize": "0.8rem"}),
+                                dbc.Tooltip(
+                                    "Mesure la proximité des météorites historiques par rapport au point sélectionné. Une valeur élevée indique que des météorites ont été trouvées très près de ce point.",
+                                    target="proximity-info",
+                                    placement="top"
+                                )
+                            ], className="d-flex align-items-center"),
                         html.Div(className="progress", children=[
                             html.Div(className="progress-bar bg-primary",
                                     style={"width": f"{proximity_factor * 100}%"},
@@ -909,7 +950,15 @@ def register_callbacks(app, data_path):
                         ])
                     ], className="col-6 mb-2"),
                     html.Div([
-                        html.P("Densité"),
+                        html.Div([
+                                html.P("Densité", className="mb-1 d-inline-block"),
+                                html.I(className="fas fa-info-circle ms-2", id="density-info", style={"cursor": "pointer", "fontSize": "0.8rem"}),
+                                dbc.Tooltip(
+                                    "Représente la concentration de météorites dans la zone par rapport à la moyenne mondiale. Une valeur élevée indique une zone particulièrement riche en météorites.",
+                                    target="density-info",
+                                    placement="top"
+                                )
+                            ], className="d-flex align-items-center"),
                         html.Div(className="progress", children=[
                             html.Div(className="progress-bar bg-success",
                                     style={"width": f"{density_factor * 100}%"},
@@ -917,7 +966,15 @@ def register_callbacks(app, data_path):
                         ])
                     ], className="col-6 mb-2"),
                     html.Div([
-                        html.P("Temporel"),
+                        html.Div([
+                                html.P("Temporel", className="mb-1 d-inline-block"),
+                                html.I(className="fas fa-info-circle ms-2", id="temporal-info", style={"cursor": "pointer", "fontSize": "0.8rem"}),
+                                dbc.Tooltip(
+                                    "Facteur lié à l'horizon temporel de la prédiction. Une valeur plus élevée indique un horizon plus long, augmentant la probabilité d'impact mais réduisant la précision.",
+                                    target="temporal-info",
+                                    placement="top"
+                                )
+                            ], className="d-flex align-items-center"),
                         html.Div(className="progress", children=[
                             html.Div(className="progress-bar bg-info",
                                     style={"width": f"{time_factor * 100}%"},
@@ -925,7 +982,15 @@ def register_callbacks(app, data_path):
                         ])
                     ], className="col-6 mb-2"),
                     html.Div([
-                        html.P("Type de chute"),
+                        html.Div([
+                                html.P("Type de chute", className="mb-1 d-inline-block"),
+                                html.I(className="fas fa-info-circle ms-2", id="fall-type-info", style={"cursor": "pointer", "fontSize": "0.8rem"}),
+                                dbc.Tooltip(
+                                    "Influence du type de chute sélectionné (Fell/Found/All) sur la prédiction. Les météorites observées pendant leur chute (Fell) ont un facteur plus élevé car leurs données sont généralement plus précises.",
+                                    target="fall-type-info",
+                                    placement="top"
+                                )
+                            ], className="d-flex align-items-center"),
                         html.Div(className="progress", children=[
                             html.Div(className="progress-bar bg-secondary",
                                     style={"width": f"{fall_factor * 100 / 1.5}%"},
@@ -938,33 +1003,68 @@ def register_callbacks(app, data_path):
             nearby_text = f"{nearby_count} météorites dans un rayon de {analysis_radius}°"
 
             return html.Div([
-                html.H5("Prédiction d'Impact de Météorite", className="mb-3 text-primary"),
+                html.Div([
+                    html.H5("Prédiction d'Impact de Météorite", className="mb-3 text-primary d-inline-block"),
+                    html.I(className="fas fa-info-circle ms-2", id="impact-prediction-info", style={"cursor": "pointer"}),
+                    dbc.Tooltip(
+                        "Cette section présente une estimation de la probabilité qu'une météorite tombe dans la zone sélectionnée pendant l'horizon temporel défini. Les météorites tombent de manière relativement uniforme sur toute la Terre, mais certaines zones ont historiquement enregistré plus d'impacts en raison de facteurs géologiques ou de meilleures conditions d'observation.",
+                        target="impact-prediction-info",
+                        placement="top"
+                    )
+                ], className="d-flex align-items-center"),
 
                 html.Div([
                     html.Div([
-                        html.H6("Probabilité d'impact", className="text-center mb-2"),
+                        html.Div([
+                            html.H6("Probabilité d'impact", className="text-center mb-2 d-inline-block"),
+                            html.I(className="fas fa-info-circle ms-2", id="impact-probability-info", style={"cursor": "pointer"}),
+                            dbc.Tooltip(
+                                "Probabilité estimée qu'une météorite tombe dans cette zone spécifique pendant l'horizon temporel défini. Cette estimation est basée sur la distribution globale des chutes de météorites (environ 500-1000 par an sur Terre), ajustée selon les données historiques locales et l'horizon temporel.",
+                                target="impact-probability-info",
+                                placement="top"
+                            )
+                        ], className="d-flex justify-content-center align-items-center"),
                         probability_gauge,
-                        html.P([
-                            html.I(className="fas fa-info-circle me-2"),
-                            "Indice de confiance: ",
-                            html.Span(f"{confidence_score}%", className=f"badge bg-{confidence_class} ms-1")
+                        html.Div([
+                            html.Span("Indice de confiance: ", className="me-1"),
+                            html.I(className="fas fa-info-circle me-2", id="confidence-info", style={"cursor": "pointer"}),
+                            html.Span(f"{confidence_score}%", className=f"badge bg-{confidence_class} ms-1"),
+                            dbc.Tooltip(
+                                "Mesure de la fiabilité de la prédiction basée sur la qualité et la quantité des données disponibles dans la zone. Un score élevé indique une prédiction plus fiable. Calculé en fonction de la densité des observations (45%), de la proximité des données (35%) et de l'horizon temporel (20%).",
+                                target="confidence-info",
+                                placement="top"
+                            )
                         ], className="text-center")
                     ], className="col-md-6"),
 
                     html.Div([
-                        html.H6("Masse Estimée", className="mb-2"),
+                        html.Div([
+                            html.H6("Masse Estimée", className="mb-2 d-inline-block"),
+                            html.I(className="fas fa-info-circle ms-2", id="estimated-mass-info", style={"cursor": "pointer"}),
+                            dbc.Tooltip(
+                                "Estimation de la masse probable d'une météorite qui pourrait tomber dans cette zone. Calculée par un modèle de Random Forest entraîné sur les données historiques mondiales, en tenant compte de la latitude, longitude, année et type de chute.",
+                                target="estimated-mass-info",
+                                placement="top"
+                            )
+                        ], className="d-flex justify-content-center align-items-center"),
                         html.Div([
                             html.Span(mass_formatted,
                                     className="d-block text-center display-6 text-success")
                         ], className="p-3 border rounded text-center"),
-                        html.P([
+                        html.Div([
                             html.I(className="fas fa-meteor me-2"),
-                            nearby_text
+                            html.Span(nearby_text, className="me-1"),
+                            html.I(className="fas fa-info-circle", id="nearby-info", style={"cursor": "pointer"}),
+                            dbc.Tooltip(
+                                f"Nombre de météorites historiquement observées dans un rayon de {analysis_radius}° autour du point sélectionné. Cette densité locale influence la précision et la fiabilité des prédictions, mais ne reflète pas nécessairement la probabilité réelle d'impact futur.",
+                                target="nearby-info",
+                                placement="top"
+                            )
                         ], className="text-center mt-2 text-muted small")
                     ], className="col-md-6")
                 ], className="row mb-3"),
 
-                factors_explanation,
+                # Suppression des facteurs de prédiction comme demandé
 
                 html.Hr(),
 
@@ -1213,14 +1313,21 @@ def register_callbacks(app, data_path):
                 if len(zone_data) < 5 or 'year' not in zone_data.columns:
                     return create_empty_figure_with_message("Données insuffisantes")
 
+                # S'assurer que l'année est traitée comme un nombre et filtrer les valeurs invalides
+                zone_data_copy = zone_data.copy()
+                zone_data_copy['year'] = pd.to_numeric(zone_data_copy['year'], errors='coerce')
+
+                # Filtrer les années manquantes ou égales à zéro
+                zone_data_copy = zone_data_copy[zone_data_copy['year'] > 0]
+
                 # Extraire les années
-                years = zone_data['year'].dropna()
+                years = zone_data_copy['year'].dropna()
                 if len(years) < 5:
                     return create_empty_figure_with_message("Données temporelles insuffisantes")
 
                 # Grouper par décennie
-                zone_data['decade'] = (zone_data['year'] // 10) * 10
-                decade_counts = zone_data.groupby('decade').size().reset_index(name='count')
+                zone_data_copy['decade'] = (zone_data_copy['year'] // 10) * 10
+                decade_counts = zone_data_copy.groupby('decade').size().reset_index(name='count')
 
                 # Créer le graphique
                 fig = go.Figure()
@@ -1697,9 +1804,19 @@ def register_callbacks(app, data_path):
             x='log_mass',
             nbins=50,
             labels={'log_mass': 'Log10(Masse en grammes)'},
-            title='Distribution des Masses (Échelle Log)',
             height=350,
             color_discrete_sequence=['#0071e3']
+        )
+
+        # Définir le titre séparément dans update_layout
+        fig.update_layout(
+            title={
+                'text': 'Distribution des Masses (Échelle Log)',
+                'y': 0.9,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            }
         )
 
         fig.update_layout(
@@ -2639,6 +2756,16 @@ def register_callbacks(app, data_path):
                     # Probabilités de base
                     base_prob_found = min(0.95, found_ratio * density_factor * 0.7)
                     base_prob_fell = min(0.5, fell_ratio * density_factor * 0.3)
+
+                    # Assurer que les probabilités sont différentes
+                    if abs(base_prob_found - base_prob_fell) < 0.05:
+                        # Si les probabilités sont trop proches, les ajuster
+                        if base_prob_found > base_prob_fell:
+                            base_prob_found += 0.05
+                            base_prob_fell = max(0.01, base_prob_fell - 0.03)
+                        else:
+                            base_prob_fell += 0.05
+                            base_prob_found = max(0.01, base_prob_found - 0.03)
                 else:
                     # Estimations par défaut si les données ne contiennent pas fall/found
                     base_prob_found = 0.15
@@ -2646,15 +2773,22 @@ def register_callbacks(app, data_path):
 
             # Ajuster selon l'horizon temporel
             time_factor = min(1.5, 1 + (horizon / 100))
-            prob_found = min(0.99, base_prob_found * time_factor)
-            prob_fell = min(0.75, base_prob_fell * time_factor)
+            prob_found = min(0.95, base_prob_found * time_factor)
+            prob_fell = min(0.70, base_prob_fell * time_factor)
 
             # Ajuster selon les facteurs environnementaux et historiques
-            prob_found = prob_found * (0.7 + env_factor * 0.6)
-            prob_fell = prob_fell * (0.7 + env_factor * 0.6)
+            env_adjustment = (0.7 + env_factor * 0.3)  # Réduit l'impact pour éviter les valeurs > 100%
+            hist_adjustment = (0.7 + hist_weight * 0.3)  # Réduit l'impact pour éviter les valeurs > 100%
 
-            prob_found = prob_found * (0.7 + hist_weight * 0.6)
-            prob_fell = prob_fell * (0.7 + hist_weight * 0.6)
+            prob_found = min(0.95, prob_found * env_adjustment * hist_adjustment)
+            prob_fell = min(0.70, prob_fell * env_adjustment * hist_adjustment)
+
+            # S'assurer que la somme des probabilités ne dépasse pas 100%
+            if (prob_found + prob_fell) > 1.0:
+                # Réduire proportionnellement les deux probabilités
+                reduction_factor = 0.95 / (prob_found + prob_fell)  # Viser 95% max au total
+                prob_found *= reduction_factor
+                prob_fell *= reduction_factor
 
             # Estimer la masse
             if len(nearby_data) > 5 and 'mass (g)' in nearby_data.columns:
@@ -2891,6 +3025,12 @@ def register_callbacks(app, data_path):
 
             if len(nearby_data) < 5 or 'year' not in nearby_data.columns:
                 return empty_figure_with_message("Données insuffisantes")
+
+            # S'assurer que l'année est traitée comme un nombre et filtrer les valeurs invalides
+            nearby_data['year'] = pd.to_numeric(nearby_data['year'], errors='coerce')
+
+            # Filtrer les années manquantes ou égales à zéro
+            nearby_data = nearby_data[nearby_data['year'] > 0]
 
             # Extraire les années
             years = nearby_data['year'].dropna()

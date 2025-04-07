@@ -50,7 +50,9 @@ def layout(**kwargs):
                         )
                     ]),
                     dbc.CardBody([
-                        html.P("Cliquez sur la carte pour sélectionner une zone d'analyse et de prédiction.", className="mb-3"),
+                        html.P("Cliquez sur la carte pour sélectionner une zone d'analyse et de prédiction.", 
+                              className="mb-3",
+                              style={'fontSize': '14px', 'color': '#666'}),
                         # Style de carte (caché mais nécessaire pour le callback)
                         html.Div([
                             dcc.Dropdown(
@@ -72,7 +74,7 @@ def layout(**kwargs):
                                 dcc.Graph(
                                     id='prediction-map',
                                     figure={},
-                                    style={'height': f'{PREDICTION_MAP_HEIGHT}px'},
+                                    style={'height': '200px', 'width': '100%'},
                                     config={
                                         'displayModeBar': True,
                                         'scrollZoom': True,
@@ -88,7 +90,7 @@ def layout(**kwargs):
                             dcc.Store(id="selected-location")
                         ], className="mt-3")
                     ])
-                ], className="shadow-sm h-100 mb-4")
+                ], className="shadow-sm mb-4")
             ], md=7),
 
             # Colonne droite - Panneau de contrôle
@@ -230,7 +232,7 @@ def layout(**kwargs):
                                     ),
                                 ]),
 
-                                # Mises à jour en temps réel
+                                # Mises à jour en temps réel (toujours activé par défaut)
                                 html.Div([
                                     dbc.Checkbox(
                                         id="realtime-updates",
@@ -263,19 +265,41 @@ def layout(**kwargs):
                             html.Div(id="reliability-index", className="mt-2")
                         ])
                     ])
-                ], className="shadow-sm h-100 mb-4")
+                ], className="shadow-sm mb-4")
             ], md=5),
         ]),
 
         # Menu de navigation des sections de prédiction
         dbc.Row([
             dbc.Col([
-                dbc.ButtonGroup([
-                    dbc.Button("Résultats de prédiction", id="btn-prediction-results", color="primary", outline=True, className="active me-1"),
-                    dbc.Button("Analyse de zone", id="btn-zone-analysis", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Prédiction temporelle", id="btn-temporal-prediction", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Prédiction spatiale", id="btn-spatial-prediction", color="primary", outline=True),
-                ], className="mb-4 w-100")
+                dbc.Card([
+                    dbc.CardBody([
+                        dbc.Row([
+                            dbc.Col([
+                                html.Button("Résultats de prédiction", id="btn-prediction-results", className="btn btn-primary py-3 fs-5", style={"width": "98%"}),
+                            ], width="auto", style={"flex-grow": "1"}),
+                            dbc.Col([
+                                html.Div([
+                                    html.Button("Analyse de zone", id="btn-zone-analysis", className="btn btn-outline-primary py-3 fs-5", style={"width": "98%"}),
+                                    dbc.Tooltip(
+                                        "Pour obtenir des prévisions temporelles, veuillez d'abord:\n\n" +
+                                        "1. Sélectionner un emplacement sur la carte\n" +
+                                        "2. Ajuster les paramètres si nécessaire\n" +
+                                        "3. Cliquer sur l'onglet 'Prévision Temporelle'",
+                                        target="btn-zone-analysis",
+                                        placement="top"
+                                    ),
+                                ]),
+                            ], width="auto", style={"flex-grow": "1"}),
+                            dbc.Col([
+                                html.Button("Prédiction temporelle", id="btn-temporal-prediction", className="btn btn-outline-primary py-3 fs-5", style={"width": "98%"}),
+                            ], width="auto", style={"flex-grow": "1"}),
+                            dbc.Col([
+                                html.Button("Prédiction spatiale", id="btn-spatial-prediction", className="btn btn-outline-primary py-3 fs-5", style={"width": "98%"}),
+                            ], width="auto", style={"flex-grow": "1"}),
+                        ], className="d-flex justify-content-between", style={"gap": "5px"})
+                    ], className="p-1")
+                ], className="shadow-sm my-3")
             ], width=12)
         ]),
 
@@ -293,8 +317,16 @@ def layout(**kwargs):
                             dbc.Col([
                                 dbc.Card([
                                     dbc.CardBody([
-                                        html.H5("Probabilité de découverte (Found)", className="card-title text-center mb-3"),
-                                        html.Div(id="found-probability", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["primary"]})
+                                        html.Div([
+                                            html.H5("Probabilité de découverte (Found)", className="card-title text-center mb-3"),
+                                            html.I(className="fas fa-info-circle ms-2", id="found-info", style={"cursor": "pointer"})
+                                        ], className="d-flex justify-content-center align-items-center"),
+                                        html.Div(id="found-probability", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["primary"]}),
+                                        dbc.Tooltip(
+                                            "Probabilité qu'une météorite soit découverte après sa chute (Found). Calculée à partir des données historiques locales, de la densité de météorites dans la zone, et des facteurs environnementaux.",
+                                            target="found-info",
+                                            placement="top"
+                                        )
                                     ])
                                 ], className="shadow-sm text-center")
                             ], md=6, className="mb-3"),
@@ -303,8 +335,16 @@ def layout(**kwargs):
                             dbc.Col([
                                 dbc.Card([
                                     dbc.CardBody([
-                                        html.H5("Probabilité d'observation (Fell)", className="card-title text-center mb-3"),
-                                        html.Div(id="fell-probability", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["warning"]})
+                                        html.Div([
+                                            html.H5("Probabilité d'observation (Fell)", className="card-title text-center mb-3"),
+                                            html.I(className="fas fa-info-circle ms-2", id="fell-info", style={"cursor": "pointer"})
+                                        ], className="d-flex justify-content-center align-items-center"),
+                                        html.Div(id="fell-probability", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["warning"]}),
+                                        dbc.Tooltip(
+                                            "Probabilité qu'une météorite soit observée pendant sa chute (Fell). Calculée à partir des données historiques locales, de la densité de population, et des facteurs environnementaux. La somme des probabilités Found et Fell est limitée à 95% maximum.",
+                                            target="fell-info",
+                                            placement="top"
+                                        )
                                     ])
                                 ], className="shadow-sm text-center")
                             ], md=6, className="mb-3"),
@@ -313,8 +353,16 @@ def layout(**kwargs):
                             dbc.Col([
                                 dbc.Card([
                                     dbc.CardBody([
-                                        html.H5("Masse estimée (g)", className="card-title text-center mb-3"),
-                                        html.Div(id="estimated-mass", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["success"]})
+                                        html.Div([
+                                            html.H5("Masse estimée (g)", className="card-title text-center mb-3"),
+                                            html.I(className="fas fa-info-circle ms-2", id="mass-info", style={"cursor": "pointer"})
+                                        ], className="d-flex justify-content-center align-items-center"),
+                                        html.Div(id="estimated-mass", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["success"]}),
+                                        dbc.Tooltip(
+                                            "Estimation de la masse probable d'une météorite dans cette zone. Calculée par un modèle de Random Forest entraîné sur les données historiques, en tenant compte de la latitude, longitude, année et type de chute.",
+                                            target="mass-info",
+                                            placement="top"
+                                        )
                                     ])
                                 ], className="shadow-sm text-center")
                             ], md=6, className="mb-3"),
@@ -323,8 +371,16 @@ def layout(**kwargs):
                             dbc.Col([
                                 dbc.Card([
                                     dbc.CardBody([
-                                        html.H5("Classe la plus probable", className="card-title text-center mb-3"),
-                                        html.Div(id="probable-class", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["info"]})
+                                        html.Div([
+                                            html.H5("Classe la plus probable", className="card-title text-center mb-3"),
+                                            html.I(className="fas fa-info-circle ms-2", id="class-info", style={"cursor": "pointer"})
+                                        ], className="d-flex justify-content-center align-items-center"),
+                                        html.Div(id="probable-class", className="text-center fs-1 fw-bold", style={"color": COLOR_SCHEMES["info"]}),
+                                        dbc.Tooltip(
+                                            "Classification probable de la météorite selon sa composition. Prédite par un modèle de Random Forest Classifier entraîné sur les données historiques, en tenant compte de la latitude, longitude, masse et type de chute.",
+                                            target="class-info",
+                                            placement="top"
+                                        )
                                     ])
                                 ], className="shadow-sm text-center")
                             ], md=6, className="mb-3"),
@@ -332,7 +388,15 @@ def layout(**kwargs):
                             # Sortie de prédiction détaillée
                             dbc.Col([
                                 dbc.Card([
-                                    dbc.CardHeader("Détails de la prédiction"),
+                                    dbc.CardHeader([
+                                        "Détails de la prédiction",
+                                        html.I(className="fas fa-info-circle ms-2 float-end", id="details-info", style={"cursor": "pointer"}),
+                                        dbc.Tooltip(
+                                            "Informations détaillées sur la prédiction, incluant les facteurs pris en compte, la méthodologie utilisée et le niveau de confiance. Les prédictions combinent des modèles statistiques et d'apprentissage automatique.",
+                                            target="details-info",
+                                            placement="top"
+                                        )
+                                    ]),
                                     dbc.CardBody(id="prediction-output")
                                 ], className="shadow-sm h-100")
                             ], width=12, className="mb-3")

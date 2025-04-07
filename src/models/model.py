@@ -4,12 +4,15 @@ import numpy as np
 import traceback
 
 class MeteoriteData:
-    def __init__(self, data_path):
-        print("Chargement des données depuis:", data_path)
+    def __init__(self, data_path, verbose=True):
+        self.verbose = verbose
+        if self.verbose:
+            print("Chargement des données depuis:", data_path)
         self.data = pd.read_csv(data_path)
         self._clean_data()
         self._prepare_data()
-        print(f"Données chargées avec succès: {len(self.data)} météorites")
+        if self.verbose:
+            print(f"Données chargées avec succès: {len(self.data)} météorites")
 
     def _clean_data(self):
         """Nettoyer les données de base"""
@@ -20,23 +23,26 @@ class MeteoriteData:
         # Supprimer les points avec latitude = 0 ET longitude = 0 (erreurs de données)
         invalid_coords = (self.data['reclat'] == 0) & (self.data['reclong'] == 0)
         if invalid_coords.any():
-            print(f"Suppression de {invalid_coords.sum()} météorites avec coordonnées (0,0) invalides")
+            if self.verbose:
+                print(f"Suppression de {invalid_coords.sum()} météorites avec coordonnées (0,0) invalides")
             self.data = self.data[~invalid_coords]
 
         # Supprimer les lignes avec des valeurs manquantes dans les colonnes essentielles
         initial_count = len(self.data)
         self.data = self.data.dropna(subset=['reclat', 'reclong', 'mass (g)'])
         dropped_count = initial_count - len(self.data)
-        if dropped_count > 0:
+        if dropped_count > 0 and self.verbose:
             print(f"Suppression de {dropped_count} météorites avec des valeurs manquantes")
 
         # Correction des masses nulles ou négatives
         mask_invalid_mass = self.data['mass (g)'] <= 0
         if mask_invalid_mass.any():
-            print(f"Correction de {mask_invalid_mass.sum()} masses invalides (≤0)")
+            if self.verbose:
+                print(f"Correction de {mask_invalid_mass.sum()} masses invalides (≤0)")
             min_valid_mass = self.data[self.data['mass (g)'] > 0]['mass (g)'].min()
             self.data.loc[mask_invalid_mass, 'mass (g)'] = min_valid_mass
-            print(f"Masse minimale après correction: {min_valid_mass}g")
+            if self.verbose:
+                print(f"Masse minimale après correction: {min_valid_mass}g")
 
     def _prepare_data(self):
         try:
@@ -66,12 +72,13 @@ class MeteoriteData:
 
             # Vérification des valeurs problématiques (pour le débogage)
             problematic_mass = self.data[self.data['mass (g)'] <= 0]
-            if not problematic_mass.empty:
+            if not problematic_mass.empty and self.verbose:
                 print(f"ATTENTION: {len(problematic_mass)} valeurs de masse problématiques ont été corrigées")
 
             # Vérification du résultat
             min_mass = self.data['mass (g)'].min()
-            print(f"Masse minimale après correction: {min_mass}g")
+            if self.verbose:
+                print(f"Masse minimale après correction: {min_mass}g")
 
             # Convertir les années en int pour éviter les problèmes avec les filtres
             # après avoir traité les NaN
@@ -87,8 +94,9 @@ class MeteoriteData:
             self.data['recclass'] = self.data['recclass'].fillna('Unknown')
 
         except Exception as e:
-            print(f"ERREUR lors de la préparation des données: {str(e)}")
-            print(traceback.format_exc())
+            if self.verbose:
+                print(f"ERREUR lors de la préparation des données: {str(e)}")
+                print(traceback.format_exc())
 
     def get_filtered_data(self, mass_range=None, classification=None, fall_type=None, decade_range=None):
         try:
@@ -101,7 +109,8 @@ class MeteoriteData:
                     max_mass = 10 ** mass_range[1]
                     filtered = filtered[filtered['mass (g)'].between(min_mass, max_mass)]
                 except (TypeError, ValueError) as e:
-                    print(f"Erreur dans le filtre de masse: {e}")
+                    if self.verbose:
+                        print(f"Erreur dans le filtre de masse: {e}")
                     # En cas d'erreur, ne pas appliquer ce filtre
 
             # Filtre par classe de météorite
@@ -117,7 +126,8 @@ class MeteoriteData:
                         # Si c'est déjà une liste, utiliser isin
                         filtered = filtered[filtered['recclass'].isin(classification)]
                 except Exception as e:
-                    print(f"Erreur dans le filtre de classification: {e}")
+                    if self.verbose:
+                        print(f"Erreur dans le filtre de classification: {e}")
 
             # Filtre par type de chute
             if fall_type:
@@ -128,7 +138,8 @@ class MeteoriteData:
                     else:
                         filtered = filtered[filtered['fall'].isin(fall_type)]
                 except Exception as e:
-                    print(f"Erreur dans le filtre de type de chute: {e}")
+                    if self.verbose:
+                        print(f"Erreur dans le filtre de type de chute: {e}")
 
             # Filtre par plage de décennies
             if decade_range:
@@ -137,13 +148,15 @@ class MeteoriteData:
                     max_decade = int(decade_range[1])
                     filtered = filtered[filtered['decade'].between(min_decade, max_decade)]
                 except (TypeError, ValueError) as e:
-                    print(f"Erreur dans le filtre de décennie: {e}")
+                    if self.verbose:
+                        print(f"Erreur dans le filtre de décennie: {e}")
 
             return filtered
 
         except Exception as e:
-            print(f"ERREUR lors du filtrage des données: {str(e)}")
-            print(traceback.format_exc())
+            if self.verbose:
+                print(f"ERREUR lors du filtrage des données: {str(e)}")
+                print(traceback.format_exc())
             return pd.DataFrame()  # Retourner un dataframe vide en cas d'erreur
 
     def get_meteorites_in_radius(self, lat, lon, radius_degrees):
@@ -171,6 +184,7 @@ class MeteoriteData:
             return nearby
 
         except Exception as e:
-            print(f"ERREUR lors de la récupération des météorites dans le rayon: {str(e)}")
-            print(traceback.format_exc())
+            if self.verbose:
+                print(f"ERREUR lors de la récupération des météorites dans le rayon: {str(e)}")
+                print(traceback.format_exc())
             return pd.DataFrame()  # Retourner un dataframe vide en cas d'erreur
