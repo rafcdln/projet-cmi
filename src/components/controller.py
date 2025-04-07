@@ -18,6 +18,9 @@ import re
 import logging
 import os
 import math
+import pycountry
+import reverse_geocoder as rg
+import country_converter as coco
 
 # Configuration du logging
 logging.basicConfig(
@@ -1571,16 +1574,23 @@ def register_callbacks(app, data_path):
         [Input('mass-slider', 'value'),
          Input('class-dropdown', 'value'),
          Input('fall-checklist', 'value'),
-         Input('decade-slider', 'value')]
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
     )
     @error_handling_callback
-    def update_correlation_heatmap(mass_range, classes, falls, decades):
+    def update_correlation_heatmap(mass_range, classes, falls, decades, selected_data):
         df = meteorite_data.get_filtered_data(
             mass_range=mass_range,
             classification=classes,
             fall_type=falls,
             decade_range=decades
         )
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
         numeric_cols = ['mass (g)', 'reclat', 'reclong', 'year']
         labels = {
             'mass (g)': 'Masse',
@@ -1622,6 +1632,40 @@ def register_callbacks(app, data_path):
             paper_bgcolor='white'
         )
         return fig
+
+    # Callback pour stocker les données sélectionnées pour le cross-filtering
+    @app.callback(
+        Output('selected-data-store', 'data'),
+        [
+            Input('mass-hist', 'selectedData'),
+            Input('time-series', 'selectedData'),
+            Input('class-distribution', 'selectedData'),
+            Input('year-distribution', 'selectedData'),
+            Input('geo-distribution', 'selectedData'),
+            Input('correlation-heatmap', 'selectedData')
+        ]
+    )
+    def store_selected_data(mass_hist_selected, time_series_selected, class_dist_selected,
+                           year_dist_selected, geo_dist_selected, corr_heatmap_selected):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return None
+
+        # Déterminer quel graphique a déclenché le callback
+        trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        selected_data = ctx.triggered[0]['value']
+
+        if not selected_data:
+            # Si la sélection est effacée, réinitialiser le store
+            return None
+
+        # Extraire les indices des points sélectionnés
+        if 'points' in selected_data:
+            indices = [point.get('customdata', point.get('pointIndex', None)) for point in selected_data['points']]
+            indices = [idx for idx in indices if idx is not None]
+            return {'indices': indices, 'source': trigger_id}
+
+        return None
 
     @app.callback(
         Output('feature-importance', 'figure'),
@@ -1700,16 +1744,19 @@ def register_callbacks(app, data_path):
 
         df['Feature'] = df['Feature'].map(lambda x: feature_names.get(x, x))
 
-        # Créer le graphique horizontal
-        fig = px.bar(
-            df,
-            y='Feature',
-            x='Importance',
+        # Créer le graphique horizontal avec go.Figure au lieu de px.bar
+        fig = go.Figure()
+
+        # Ajouter les barres
+        fig.add_trace(go.Bar(
+            x=df['Importance'],
+            y=df['Feature'],
             orientation='h',
-            color='Importance',
-            color_continuous_scale='Viridis',
-            title="Importance des Variables dans le Modèle"
-        )
+            marker=dict(
+                color=df['Importance'],
+                colorscale='Viridis'
+            )
+        ))
 
         fig.update_layout(
             height=300,
@@ -1772,10 +1819,12 @@ def register_callbacks(app, data_path):
         [Input('mass-slider', 'value'),
          Input('class-dropdown', 'value'),
          Input('fall-checklist', 'value'),
-         Input('decade-slider', 'value')]
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
     )
     @error_handling_callback
-    def update_mass_histogram(mass_range, classes, falls, decades):
+    def update_mass_histogram(mass_range, classes, falls, decades, selected_data):
+        # Récupérer les données filtrées par les contrôles
         df = meteorite_data.get_filtered_data(
             mass_range=mass_range,
             classification=classes,
@@ -1795,6 +1844,11 @@ def register_callbacks(app, data_path):
             )
             fig.update_layout(height=350)
             return fig
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
 
         # Utiliser l'échelle logarithmique pour la masse
         df['log_mass'] = np.log10(df['mass (g)'])
@@ -1830,20 +1884,385 @@ def register_callbacks(app, data_path):
             },
             margin={"r":10, "t":50, "l":10, "b":50},
             paper_bgcolor='white',
-            plot_bgcolor='white'
+            plot_bgcolor='white',
+            # Ajouter la sélection pour le cross-filtering
+            dragmode='select',
+            clickmode='event+select'
         )
 
         return fig
+
+    @app.callback(
+        Output('class-distribution', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_class_distribution(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour le graphique de distribution des classes"""
+        # Récupérer les données filtrées
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+
+        if df.empty:
+            # Retourner un graphique vide avec un message
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
+        # Regrouper les classes pour une meilleure lisibilité
+        def simplify_class(class_name):
+            if 'Iron' in class_name:
+                return 'Météorites de fer'
+            if 'Pallasite' in class_name or 'Mesosiderite' in class_name:
+                return 'Métallo-rocheuses'
+            if 'Eucrite' in class_name or 'Diogenite' in class_name or 'Howardite' in class_name:
+                return 'Achondrites HED'
+            if 'Ureilite' in class_name or 'Angrite' in class_name or 'Aubrite' in class_name:
+                return 'Autres achondrites'
+            if class_name.startswith('H'):
+                return 'Chondrites H'
+            if class_name.startswith('L'):
+                return 'Chondrites L'
+            if class_name.startswith('LL'):
+                return 'Chondrites LL'
+            if any(class_name.startswith(x) for x in ['CI', 'CM', 'CO', 'CV', 'CK', 'CR']):
+                return 'Chondrites carbonées'
+            if class_name.startswith('E'):
+                return 'Chondrites E'
+            if 'Martian' in class_name or 'Shergottite' in class_name or 'Nakhlite' in class_name:
+                return 'Météorites martiennes'
+            if 'Lunar' in class_name:
+                return 'Météorites lunaires'
+            return 'Autres'
+
+        # Appliquer la fonction de regroupement
+        df['class_group'] = df['recclass'].apply(simplify_class)
+
+        # Compter les occurrences de chaque groupe
+        class_counts = df['class_group'].value_counts().reset_index()
+        class_counts.columns = ['class_group', 'count']
+
+        # Trier par nombre décroissant
+        class_counts = class_counts.sort_values('count', ascending=False)
+
+        # Limiter à 10 classes pour la lisibilité
+        if len(class_counts) > 10:
+            other_count = class_counts.iloc[10:]['count'].sum()
+            class_counts = class_counts.iloc[:10]
+            class_counts = pd.concat([class_counts, pd.DataFrame([{'class_group': 'Autres', 'count': other_count}])])
+
+        # Créer le graphique en barres avec go.Figure
+        colors = px.colors.qualitative.Pastel[:len(class_counts)]
+
+        fig = go.Figure()
+
+        # Ajouter les barres
+        for i, (_, row) in enumerate(class_counts.iterrows()):
+            fig.add_trace(go.Bar(
+                x=[row['class_group']],
+                y=[row['count']],
+                name=row['class_group'],
+                marker_color=colors[i % len(colors)]
+            ))
+
+        # Mise en page
+        fig.update_layout(
+            title={
+                'text': 'Distribution des Classes de Météorites (Échelle Log)',
+                'y': 0.9,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title='Classe',
+            yaxis_title='Nombre de météorites (log)',
+            yaxis_type="log",  # Échelle logarithmique
+            yaxis=dict(
+                gridcolor='rgba(0,0,0,0.1)',  # Grille plus légère
+                showgrid=True,
+                dtick=1  # Espacement des lignes de grille en log
+            ),
+            margin={"r":10, "t":50, "l":10, "b":120},
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            dragmode='select',
+            clickmode='event+select',
+            showlegend=False
+        )
+
+        # Rotation des étiquettes pour une meilleure lisibilité
+        fig.update_xaxes(tickangle=45)
+
+        return fig
+
+    @app.callback(
+        Output('year-distribution', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_year_distribution(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour le graphique de distribution temporelle"""
+        # Récupérer les données filtrées
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+
+        if df.empty:
+            # Retourner un graphique vide avec un message
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
+        # S'assurer que l'année est traitée comme un nombre
+        df['year'] = pd.to_numeric(df['year'], errors='coerce')
+        df = df.dropna(subset=['year'])
+
+        # Grouper par décennie pour une meilleure lisibilité
+        df['decade'] = (df['year'] // 10) * 10
+        decade_counts = df.groupby('decade').size().reset_index(name='count')
+
+        # Utiliser la transformation logarithmique personnalisée
+        from src.utils.helpers import log_transform
+
+        # Créer une copie pour ne pas modifier les données originales
+        plot_data = decade_counts.copy()
+
+        # Appliquer la transformation logarithmique
+        plot_data['log_count'] = plot_data['count'].apply(log_transform)
+
+        # Créer le graphique en barres avec les valeurs transformées
+        fig = go.Figure()
+
+        # Ajouter les barres
+        for i, (_, row) in enumerate(plot_data.iterrows()):
+            fig.add_trace(go.Bar(
+                x=[row['decade']],
+                y=[row['log_count']],  # Utiliser la valeur transformée
+                marker_color='#5ac8fa',
+                customdata=[row['count']],  # Stocker la valeur originale
+                hovertemplate='%{x}: %{customdata} météorites<extra></extra>'
+            ))
+
+        # Mise en page
+        fig.update_layout(
+            title={
+                'text': 'Distribution Temporelle des Météorites (Échelle Log)',
+                'y': 0.9,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title='Décennie',
+            yaxis_title='Nombre de météorites (log)',
+            margin={"r":10, "t":50, "l":10, "b":50},
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            # Ajouter la sélection pour le cross-filtering
+            dragmode='select',
+            clickmode='event+select',
+            showlegend=False
+        )
+
+        # Personnaliser les étiquettes de l'axe Y pour montrer les valeurs réelles
+        y_ticks = [1, 10, 100, 1000, 10000]
+        y_tick_labels = [str(val) for val in y_ticks]
+        y_tick_values = [log_transform(val) for val in y_ticks]
+
+        fig.update_yaxes(tickvals=y_tick_values, ticktext=y_tick_labels)
+
+        return fig
+
+    @app.callback(
+        Output('geo-distribution', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_geo_distribution(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour la carte de distribution géographique"""
+        try:
+            import country_converter as coco
+            
+            # Récupérer les données filtrées
+            df = meteorite_data.get_filtered_data(
+                mass_range=mass_range,
+                classification=classes,
+                fall_type=falls,
+                decade_range=decades
+            )
+
+            if df.empty:
+                return empty_figure_with_message("Aucune donnée disponible")
+
+            # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+            if selected_data and selected_data.get('indices'):
+                indices = selected_data.get('indices')
+                df = df.iloc[indices]
+
+            # Filtrer les données sans coordonnées valides
+            df = df.dropna(subset=['reclat', 'reclong'])
+            df = df[~((df['reclat'] == 0) & (df['reclong'] == 0))]
+            
+            if df.empty:
+                return empty_figure_with_message("Aucune coordonnée valide après filtrage")
+
+            # Convertir les coordonnées en pays
+            try:
+                import reverse_geocoder as rg
+                results = rg.search(list(zip(df['reclat'], df['reclong'])))
+                df['country_code'] = [r['cc'] for r in results]
+                
+                # Convertir les codes pays en noms complets
+                cc = coco.CountryConverter()
+                df['country_name'] = cc.convert(df['country_code'], to='name_short')
+                
+                # Compter le nombre de météorites par pays
+                country_counts = df['country_name'].value_counts().reset_index()
+                country_counts.columns = ['country', 'count']
+                
+                # Calculer le logarithme du nombre de météorites
+                country_counts['log_count'] = np.log10(country_counts['count'] + 1)
+                
+                # Obtenir les codes ISO3 pour les pays
+                country_counts['iso_alpha'] = cc.convert(country_counts['country'], to='ISO3')
+                
+                # Créer la figure choroplèthe
+                fig = go.Figure(data=go.Choropleth(
+                    locations=country_counts['iso_alpha'],
+                    z=country_counts['log_count'],
+                    text=country_counts.apply(
+                        lambda row: f"{row['country']}: {row['count']} météorites", axis=1
+                    ),
+                    colorscale='Viridis',
+                    autocolorscale=False,
+                    marker_line_color='white',
+                    marker_line_width=0.5,
+                    showscale=False,  # Cacher l'échelle de couleur
+                    hovertemplate='%{text}<extra></extra>'
+                ))
+                
+                # Configuration minimaliste
+                fig.update_layout(
+                    title={
+                        'text': 'Distribution Géographique des Météorites',
+                        'y': 0.95,
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top'
+                    },
+                    geo=dict(
+                        showframe=False,
+                        showcoastlines=True,
+                        projection_type='natural earth',
+                        coastlinecolor='lightgray',
+                        landcolor='lightgray',
+                        showland=True,
+                        showocean=True,
+                        oceancolor='aliceblue',
+                        showcountries=True,
+                        countrycolor='white',
+                        countrywidth=0.5,
+                        # Ajuster le centre et le zoom
+                        center=dict(lat=15, lon=0),
+                        projection_scale=1.0
+                    ),
+                    height=350,  # Réduire la hauteur
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    paper_bgcolor='white'
+                )
+                
+                return fig
+                
+            except Exception as e:
+                print(f"Erreur dans la conversion des coordonnées: {str(e)}")
+                
+                # Solution de secours avec une carte plus simple
+                fig = go.Figure(go.Densitymapbox(
+                    lat=df['reclat'],
+                    lon=df['reclong'],
+                    z=np.ones(len(df)),
+                    radius=8,
+                    colorscale='Viridis',
+                    showscale=False,  # Pas d'échelle de couleur
+                    hoverinfo='none'
+                ))
+                
+                fig.update_layout(
+                    title={
+                        'text': 'Distribution Géographique des Météorites',
+                        'y': 0.95,
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top'
+                    },
+                    mapbox=dict(
+                        style='open-street-map',
+                        center=dict(lat=15, lon=0),
+                        zoom=0.7
+                    ),
+                    height=350,  # Hauteur réduite
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    paper_bgcolor='white'
+                )
+                
+                return fig
+
+        except Exception as e:
+            print(f"ERREUR dans update_geo_distribution: {str(e)}")
+            return empty_figure_with_message(f"Erreur: {str(e)}")
 
     @app.callback(
         Output('time-series', 'figure'),
         [Input('mass-slider', 'value'),
          Input('class-dropdown', 'value'),
          Input('fall-checklist', 'value'),
-         Input('decade-slider', 'value')]
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
     )
     @error_handling_callback
-    def update_time_series(mass_range, classes, falls, decades):
+    def update_time_series(mass_range, classes, falls, decades, selected_data):
         """Callback pour mettre à jour le graphique de série temporelle"""
         # Récupérer les données filtrées
         df = meteorite_data.get_filtered_data(
@@ -1852,6 +2271,11 @@ def register_callbacks(app, data_path):
             fall_type=falls,
             decade_range=decades
         )
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
 
         # Valider et corriger le DataFrame pour éviter les erreurs de types
         df = validate_dataframe_for_plotly(df, "update_time_series")
@@ -3148,6 +3572,60 @@ def register_callbacks(app, data_path):
         if realtime_enabled:
             return (args[0] or 0) + 1
         return dash.no_update
+
+    # Callback pour basculer entre les onglets d'analyse
+    @app.callback(
+        [
+            Output('panel-distributions', 'style'),
+            Output('panel-time-series', 'style'),
+            Output('panel-correlations', 'style'),
+            Output('btn-distributions', 'className'),
+            Output('btn-time-series', 'className'),
+            Output('btn-correlations', 'className'),
+            Output('active-tab-store', 'data')
+        ],
+        [
+            Input('btn-distributions', 'n_clicks'),
+            Input('btn-time-series', 'n_clicks'),
+            Input('btn-correlations', 'n_clicks'),
+            Input('active-tab-store', 'data')
+        ]
+    )
+    def switch_analysis_tabs(dist_clicks, time_clicks, corr_clicks, active_tab):
+        ctx = dash.callback_context
+
+        # Si le callback est déclenché par le chargement de la page, utiliser l'onglet actif stocké
+        if not ctx.triggered:
+            active_tab = active_tab or 'distributions'
+        else:
+            # Sinon, déterminer quel bouton a été cliqué
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if button_id == 'btn-distributions':
+                active_tab = 'distributions'
+            elif button_id == 'btn-time-series':
+                active_tab = 'time-series'
+            elif button_id == 'btn-correlations':
+                active_tab = 'correlations'
+
+        # Styles pour afficher/masquer les panneaux
+        display_distributions = {'display': 'block'} if active_tab == 'distributions' else {'display': 'none'}
+        display_time_series = {'display': 'block'} if active_tab == 'time-series' else {'display': 'none'}
+        display_correlations = {'display': 'block'} if active_tab == 'correlations' else {'display': 'none'}
+
+        # Classes pour les boutons actifs/inactifs
+        btn_dist_class = "active me-1" if active_tab == 'distributions' else "me-1"
+        btn_time_class = "active me-1" if active_tab == 'time-series' else "me-1"
+        btn_corr_class = "active" if active_tab == 'correlations' else ""
+
+        return [
+            display_distributions,
+            display_time_series,
+            display_correlations,
+            btn_dist_class,
+            btn_time_class,
+            btn_corr_class,
+            active_tab
+        ]
 
     # Callback pour basculer entre les vues de prédiction
     @app.callback(

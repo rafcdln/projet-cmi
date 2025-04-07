@@ -428,5 +428,11 @@ def layout(**kwargs):
         html.Div(id='info-popovers-analysis'),
 
         # Intervalle pour l'actualisation périodique des données (si nécessaire)
-        dcc.Interval(id='interval', interval=600000)  # 10 minutes
+        dcc.Interval(id='interval', interval=600000),  # 10 minutes
+
+        # Store pour les données sélectionnées (pour le cross-filtering)
+        dcc.Store(id='selected-data-store', storage_type='memory'),
+
+        # Store pour l'état des onglets
+        dcc.Store(id='active-tab-store', data='distributions', storage_type='memory')
     ], fluid=True)
