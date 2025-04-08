@@ -8,3 +8,7 @@ numpy
 scikit-learn==1.2.2
 gunicorn==21.2.0
 joblib==1.2.0
+matplotlib==3.10.1
+country_converter==1.0.0
+reverse_geocoder==1.1.0
+pycountry==23.1.3

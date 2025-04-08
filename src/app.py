@@ -208,7 +208,7 @@ app.layout = html.Div([
     html.Footer(
         dbc.Container([
             html.Hr(),
-            html.P("Dashboard d'analyse de météorites © 2023", className="text-center text-muted")
+            html.P("Dashboard d'analyse de météorites (Université de Bordeaux) © 2025", className="text-center text-muted")
         ]),
         className="mt-5"
     )

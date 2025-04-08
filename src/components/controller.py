@@ -1931,7 +1931,7 @@ def register_callbacks(app, data_path):
 
         # Calculer la distribution des classes
         class_counts = df['recclass'].value_counts().nlargest(10)
-        
+
         # Créer le graphique à barres
         fig = go.Figure(go.Bar(
             x=class_counts.index,
@@ -1943,7 +1943,7 @@ def register_callbacks(app, data_path):
                 colorscale='Viridis',
                 showscale=False
             )
-        ))
+            ))
 
         # Mise en page
         fig.update_layout(
@@ -2084,7 +2084,7 @@ def register_callbacks(app, data_path):
         """Callback pour mettre à jour la carte de distribution géographique"""
         try:
             import country_converter as coco
-            
+
             # Récupérer les données filtrées
             df = meteorite_data.get_filtered_data(
                 mass_range=mass_range,
@@ -2104,7 +2104,7 @@ def register_callbacks(app, data_path):
             # Filtrer les données sans coordonnées valides
             df = df.dropna(subset=['reclat', 'reclong'])
             df = df[~((df['reclat'] == 0) & (df['reclong'] == 0))]
-            
+
             if df.empty:
                 return empty_figure_with_message("Aucune coordonnée valide après filtrage")
 
@@ -2113,21 +2113,21 @@ def register_callbacks(app, data_path):
                 import reverse_geocoder as rg
                 results = rg.search(list(zip(df['reclat'], df['reclong'])))
                 df['country_code'] = [r['cc'] for r in results]
-                
+
                 # Convertir les codes pays en noms complets
                 cc = coco.CountryConverter()
                 df['country_name'] = cc.convert(df['country_code'], to='name_short')
-                
+
                 # Compter le nombre de météorites par pays
                 country_counts = df['country_name'].value_counts().reset_index()
                 country_counts.columns = ['country', 'count']
-                
+
                 # Calculer le logarithme du nombre de météorites
                 country_counts['log_count'] = np.log10(country_counts['count'] + 1)
-                
+
                 # Obtenir les codes ISO3 pour les pays
                 country_counts['iso_alpha'] = cc.convert(country_counts['country'], to='ISO3')
-                
+
                 # Créer la figure choroplèthe
                 fig = go.Figure(data=go.Choropleth(
                     locations=country_counts['iso_alpha'],
@@ -2142,7 +2142,7 @@ def register_callbacks(app, data_path):
                     showscale=False,  # Cacher l'échelle de couleur
                     hovertemplate='%{text}<extra></extra>'
                 ))
-                
+
                 # Configuration minimaliste
                 fig.update_layout(
                     title={
@@ -2172,23 +2172,23 @@ def register_callbacks(app, data_path):
                     margin=dict(l=0, r=0, t=30, b=0),
                     paper_bgcolor='white'
                 )
-                
+
                 return fig
-                
+
             except Exception as e:
                 print(f"Erreur dans la conversion des coordonnées: {str(e)}")
-                
+
                 # Solution de secours avec une carte plus simple
                 fig = go.Figure(go.Densitymapbox(
-                    lat=df['reclat'],
-                    lon=df['reclong'],
+            lat=df['reclat'],
+            lon=df['reclong'],
                     z=np.ones(len(df)),
                     radius=8,
-                    colorscale='Viridis',
+            colorscale='Viridis',
                     showscale=False,  # Pas d'échelle de couleur
                     hoverinfo='none'
                 ))
-                
+
                 fig.update_layout(
                     title={
                         'text': 'Distribution Géographique des Météorites',
@@ -2206,7 +2206,7 @@ def register_callbacks(app, data_path):
                     margin=dict(l=0, r=0, t=30, b=0),
                     paper_bgcolor='white'
                 )
-                
+
                 return fig
 
         except Exception as e:
@@ -2244,7 +2244,7 @@ def register_callbacks(app, data_path):
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="Aucune donnée disponible pour la série temporelle",
+                text="Aucune donnée disponible pour la carte thermique",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5,
                 showarrow=False,
@@ -2262,7 +2262,7 @@ def register_callbacks(app, data_path):
         if df.empty or len(df['year'].unique()) < 2:
             fig = go.Figure()
             fig.add_annotation(
-                text="Données insuffisantes pour la série temporelle",
+                text="Données insuffisantes pour la carte thermique",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5,
                 showarrow=False,
@@ -2271,92 +2271,601 @@ def register_callbacks(app, data_path):
             fig.update_layout(height=350)
             return fig
 
-        # Regrouper par année et compter les occurrences
+        # Créer un graphique d'évolution temporelle plus original
+        # Grouper par année et calculer le nombre de météorites
+        yearly_counts = df.groupby('year').size().reset_index(name='count')
+
+        # Calculer la moyenne mobile sur 5 ans pour lisser les données
+        yearly_counts['moving_avg'] = yearly_counts['count'].rolling(window=5, min_periods=1).mean()
+
+        # Calculer le taux de croissance annuel
+        yearly_counts['growth_rate'] = yearly_counts['count'].pct_change() * 100
+
+        # Remplacer les valeurs infinies ou NaN par 0
+        yearly_counts['growth_rate'] = yearly_counts['growth_rate'].replace([np.inf, -np.inf, np.nan], 0)
+
+        # Utiliser la transformation logarithmique pour une meilleure visualisation
+        from src.utils.helpers import log_transform
+        yearly_counts['log_count'] = yearly_counts['count'].apply(log_transform)
+
+        # Créer le graphique
+        fig = go.Figure()
+
+        # Ajouter l'aire pour le nombre de météorites (avec échelle logarithmique)
+        fig.add_trace(go.Scatter(
+            x=yearly_counts['year'],
+            y=yearly_counts['log_count'],
+            mode='none',
+            fill='tozeroy',
+            fillcolor='rgba(0, 113, 227, 0.2)',
+            name='Nombre de météorites',
+            customdata=yearly_counts['count'],
+            hovertemplate='%{x}: %{customdata} météorites<extra></extra>'
+        ))
+
+        # Ajouter la ligne pour la moyenne mobile
+        fig.add_trace(go.Scatter(
+            x=yearly_counts['year'],
+            y=yearly_counts['log_count'],
+            mode='lines',
+            line=dict(color='#0071e3', width=3),
+            name='Tendance',
+            customdata=yearly_counts['count'],
+            hovertemplate='%{x}: %{customdata} météorites<extra></extra>'
+        ))
+
+        # Ajouter des points pour les années importantes (pics)
+        # Identifier les pics (années où le nombre est supérieur à la moyenne + 1 écart-type)
+        threshold = yearly_counts['count'].mean() + yearly_counts['count'].std()
+        peaks = yearly_counts[yearly_counts['count'] > threshold]
+
+        fig.add_trace(go.Scatter(
+            x=peaks['year'],
+            y=peaks['log_count'],
+            mode='markers',
+            marker=dict(color='#ff3b30', size=10, symbol='star'),
+            name='Années exceptionnelles',
+            customdata=peaks['count'],
+            hovertemplate='%{x}: %{customdata} météorites (pic)<extra></extra>'
+        ))
+
+        # Mise en page
+        fig.update_layout(
+            title={
+                'text': 'Évolution Temporelle des Découvertes (Échelle Log)',
+                'y': 0.9,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title='Année',
+            yaxis_title='Nombre de météorites (log)',
+            margin={"r":10, "t":50, "l":10, "b":50},
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=0.99
+            )
+        )
+
+        # Personnaliser les étiquettes de l'axe Y pour montrer les valeurs réelles
+        y_ticks = [1, 10, 100, 1000, 10000]
+        y_tick_labels = [str(val) for val in y_ticks]
+        y_tick_values = [log_transform(val) for val in y_ticks]
+
+        fig.update_yaxes(tickvals=y_tick_values, ticktext=y_tick_labels)
+
+        return fig
+
+    @app.callback(
+        Output('annual-trend', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_annual_trend(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour le graphique de tendance annuelle"""
+        # Récupérer les données filtrées
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
+        # Valider et corriger le DataFrame pour éviter les erreurs de types
+        df = validate_dataframe_for_plotly(df, "update_annual_trend")
+
+        # Vérifier si le DataFrame est vide
+        if df.empty:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible pour la tendance annuelle",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # S'assurer que l'année est traitée comme un nombre
+        df['year'] = pd.to_numeric(df['year'], errors='coerce').fillna(0).astype(int)
+
+        # Filtrer les années valides (supérieures à 1800)
+        df = df[df['year'] > 1800]
+
+        if df.empty or len(df['year'].unique()) < 2:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Données insuffisantes pour la tendance annuelle",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # Créer un graphique de tendance annuelle plus original avec échelle logarithmique
+        # Grouper par décennie pour avoir des données plus significatives
+        df['decade'] = (df['year'] // 10) * 10
+
+        # Calculer la masse moyenne par décennie et par type de chute
+        decade_mass = df.groupby(['decade', 'fall'])['mass (g)'].agg(['mean', 'count', 'sum']).reset_index()
+
+        # Pivoter les données pour avoir une colonne pour chaque type de chute
+        pivot_count = decade_mass.pivot_table(values='count', index='decade', columns='fall', fill_value=0)
+        pivot_mass = decade_mass.pivot_table(values='mean', index='decade', columns='fall', fill_value=0)
+
+        # S'assurer que les colonnes 'Fell' et 'Found' existent
+        for pivot in [pivot_count, pivot_mass]:
+            if 'Fell' not in pivot.columns:
+                pivot['Fell'] = 0
+            if 'Found' not in pivot.columns:
+                pivot['Found'] = 0
+
+        # Calculer le total et le pourcentage pour chaque décennie
+        pivot_count['Total'] = pivot_count['Fell'] + pivot_count['Found']
+        pivot_count['Pct_Fell'] = (pivot_count['Fell'] / pivot_count['Total'] * 100).fillna(0)
+
+        # Utiliser la transformation logarithmique pour une meilleure visualisation
+        from src.utils.helpers import log_transform
+        for col in ['Fell', 'Found', 'Total']:
+            pivot_count[f'log_{col}'] = pivot_count[col].apply(log_transform)
+
+        # Créer le graphique
+        fig = go.Figure()
+
+        # Ajouter un graphique à barres pour le pourcentage de météorites observées vs trouvées
+        fig.add_trace(go.Bar(
+            x=pivot_count.index,
+            y=pivot_count['Pct_Fell'],
+            name='% Observées',
+            marker_color='rgba(255, 149, 0, 0.7)',
+            yaxis='y2',
+            customdata=pivot_count['Fell'],
+            hovertemplate='Décennie %{x}s: %{y:.1f}% observées (%{customdata} météorites)<extra></extra>'
+        ))
+
+        # Ajouter les lignes pour le nombre total avec échelle logarithmique
+        fig.add_trace(go.Scatter(
+            x=pivot_count.index,
+            y=pivot_count['log_Total'],
+            mode='lines+markers',
+            name='Total (log)',
+            line=dict(color='#ff3b30', width=3),
+            marker=dict(size=8),
+            customdata=pivot_count['Total'],
+            hovertemplate='Décennie %{x}s: %{customdata} météorites au total<extra></extra>'
+        ))
+
+        # Ajouter une ligne pour la masse moyenne des météorites trouvées
+        fig.add_trace(go.Scatter(
+            x=pivot_mass.index,
+            y=pivot_mass['Found'],
+            mode='lines',
+            name='Masse moyenne (trouvées)',
+            line=dict(color='#0071e3', width=2, dash='dot'),
+            yaxis='y3',
+            hovertemplate='Décennie %{x}s: Masse moyenne de %{y:.1f}g (trouvées)<extra></extra>'
+        ))
+
+        try:
+            # Mise en page avec trois axes Y
+            fig.update_layout(
+                title={
+                    'text': 'Analyse Multi-Dimensionnelle par Décennie (Échelle Log)',
+                    'y': 0.9,
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top'
+                },
+                xaxis=dict(
+                    title='Décennie',
+                    tickmode='array',
+                    tickvals=pivot_count.index,
+                    ticktext=[f"{decade}s" for decade in pivot_count.index],
+                    tickangle=-45
+                ),
+                yaxis=dict(
+                    title='Nombre total (log)',
+                    type='linear',
+                    side='left',
+                    showgrid=True
+                ),
+                yaxis2=dict(
+                    title='% Observées',
+                    titlefont=dict(color='rgba(255, 149, 0, 0.7)'),
+                    tickfont=dict(color='rgba(255, 149, 0, 0.7)'),
+                    anchor='x',
+                    overlaying='y',
+                    side='right',
+                    position=0.95,
+                    range=[0, 100],
+                    showgrid=False
+                ),
+                yaxis3=dict(
+                    title='Masse moyenne (g)',
+                    titlefont=dict(color='#0071e3'),
+                    tickfont=dict(color='#0071e3'),
+                    anchor='free',
+                    overlaying='y',
+                    side='right',
+                    position=1.0,
+                    showgrid=False
+                ),
+                margin={"r":80, "t":50, "l":50, "b":80},
+                paper_bgcolor='white',
+                plot_bgcolor='white',
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="right",
+                    x=0.99
+                )
+            )
+
+            # Personnaliser les étiquettes de l'axe Y pour montrer les valeurs réelles
+            y_ticks = [1, 10, 100, 1000, 10000]
+            y_tick_labels = [str(val) for val in y_ticks]
+            y_tick_values = [log_transform(val) for val in y_ticks]
+
+            fig.update_yaxes(tickvals=y_tick_values, ticktext=y_tick_labels)
+
+            return fig
+
+        except Exception as e:
+            # En cas d'erreur dans l'analyse
+            print(f"Erreur dans la génération de tendances: {str(e)}")
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Erreur lors de la génération des tendances: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+    @app.callback(
+        Output('mass-time', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_mass_time(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour le graphique d'évolution de la masse dans le temps"""
+        # Récupérer les données filtrées
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
+        # Valider et corriger le DataFrame pour éviter les erreurs de types
+        df = validate_dataframe_for_plotly(df, "update_mass_time")
+
+        # Vérifier si le DataFrame est vide
+        if df.empty:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible pour l'évolution de la masse",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # S'assurer que l'année est traitée comme un nombre
+        df['year'] = pd.to_numeric(df['year'], errors='coerce').fillna(0).astype(int)
+
+        # Filtrer les années valides (supérieures à 1800)
+        df = df[df['year'] > 1800]
+
+        # S'assurer que la masse est traitée comme un nombre
+        df['mass (g)'] = pd.to_numeric(df['mass (g)'], errors='coerce')
+        df = df.dropna(subset=['mass (g)', 'year'])
+
+        if df.empty or len(df['year'].unique()) < 2:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Données insuffisantes pour l'évolution de la masse",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # Grouper par année et calculer la masse moyenne
+        yearly_mass = df.groupby('year')['mass (g)'].agg(['mean', 'median', 'count']).reset_index()
+        yearly_mass = yearly_mass.sort_values('year')
+
+        # Utiliser la transformation logarithmique pour une meilleure visualisation
+        from src.utils.helpers import log_transform
+        yearly_mass['log_mean'] = yearly_mass['mean'].apply(log_transform)
+        yearly_mass['log_median'] = yearly_mass['median'].apply(log_transform)
+
+        # Créer le graphique avec go.Scatter
+        fig = go.Figure()
+
+        # Ajouter la masse moyenne avec échelle logarithmique
+        fig.add_trace(go.Scatter(
+            x=yearly_mass['year'],
+            y=yearly_mass['log_mean'],
+            mode='markers+lines',
+            name='Masse moyenne',
+            marker=dict(color='#0071e3', size=8),
+            line=dict(color='#0071e3', width=2),
+            customdata=yearly_mass['mean'],  # Stocker les valeurs originales
+            hovertemplate='%{x}: %{customdata:.1f}g (moyenne)<extra></extra>'
+        ))
+
+        # Ajouter la masse médiane avec échelle logarithmique
+        fig.add_trace(go.Scatter(
+            x=yearly_mass['year'],
+            y=yearly_mass['log_median'],
+            mode='markers+lines',
+            name='Masse médiane',
+            marker=dict(color='#ff9500', size=8),
+            line=dict(color='#ff9500', width=2),
+            customdata=yearly_mass['median'],  # Stocker les valeurs originales
+            hovertemplate='%{x}: %{customdata:.1f}g (médiane)<extra></extra>'
+        ))
+
+        # Mise en page
+        fig.update_layout(
+            title={
+                'text': 'Évolution de la Masse des Météorites (Échelle Log)',
+                'y': 0.9,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title='Année',
+            yaxis_title='Masse en grammes (log)',
+            margin={"r":10, "t":50, "l":10, "b":50},
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            dragmode='select',
+            clickmode='event+select',
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=0.99
+            )
+        )
+
+        # Personnaliser les étiquettes de l'axe Y pour montrer les valeurs réelles
+        y_ticks = [1, 10, 100, 1000, 10000, 100000, 1000000]
+        y_tick_labels = ['1g', '10g', '100g', '1kg', '10kg', '100kg', '1t']
+        y_tick_values = [log_transform(val) for val in y_ticks]
+
+        fig.update_yaxes(tickvals=y_tick_values, ticktext=y_tick_labels)
+
+        return fig
+
+    @app.callback(
+        Output('forecast', 'figure'),
+        [Input('mass-slider', 'value'),
+         Input('class-dropdown', 'value'),
+         Input('fall-checklist', 'value'),
+         Input('decade-slider', 'value'),
+         Input('selected-data-store', 'data')]
+    )
+    @error_handling_callback
+    def update_forecast(mass_range, classes, falls, decades, selected_data):
+        """Callback pour mettre à jour le graphique de prévision"""
+        # Récupérer les données filtrées
+        df = meteorite_data.get_filtered_data(
+            mass_range=mass_range,
+            classification=classes,
+            fall_type=falls,
+            decade_range=decades
+        )
+
+        # Appliquer le filtre de sélection croisée si des données sont sélectionnées
+        if selected_data and selected_data.get('indices'):
+            indices = selected_data.get('indices')
+            df = df.iloc[indices]
+
+        # Valider et corriger le DataFrame pour éviter les erreurs de types
+        df = validate_dataframe_for_plotly(df, "update_forecast")
+
+        # Vérifier si le DataFrame est vide
+        if df.empty:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Aucune donnée disponible pour les prévisions",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # S'assurer que l'année est traitée comme un nombre
+        df['year'] = pd.to_numeric(df['year'], errors='coerce').fillna(0).astype(int)
+
+        # Filtrer les années valides (supérieures à 1800)
+        df = df[df['year'] > 1800]
+
+        if df.empty or len(df['year'].unique()) < 10:  # Besoin de plus de données pour une prévision fiable
+            fig = go.Figure()
+            fig.add_annotation(
+                text="Données insuffisantes pour une prévision fiable",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14)
+            )
+            fig.update_layout(height=350)
+            return fig
+
+        # Grouper par année
         yearly_counts = df.groupby('year').size().reset_index(name='count')
         yearly_counts = yearly_counts.sort_values('year')
 
-        # Calcul de la tendance (régression linéaire simple)
+        # Préparation des données pour la prévision avancée
         try:
+            # Utiliser un modèle plus avancé pour la prévision (ARIMA ou Prophet si disponible)
+            # Pour cet exemple, nous utiliserons une régression polynomiale
+            from sklearn.preprocessing import PolynomialFeatures
             from sklearn.linear_model import LinearRegression
-            model = LinearRegression()
-            model.fit(yearly_counts['year'].values.reshape(-1, 1), yearly_counts['count'].values)
+            from sklearn.pipeline import make_pipeline
 
-            # Prédiction pour les 50 prochaines années
+            # Préparer les données
+            X = yearly_counts['year'].values.reshape(-1, 1)
+            y = yearly_counts['count'].values
+
+            # Créer un modèle de régression polynomiale
+            degree = 3  # Degré du polynôme
+            model = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+            model.fit(X, y)
+
+            # Prédiction pour les 30 prochaines années
             last_year = int(yearly_counts['year'].max())
-            future_years = np.array(range(last_year + 1, last_year + 51)).reshape(-1, 1)
+            future_years = np.array(range(last_year + 1, last_year + 31)).reshape(-1, 1)
             predicted_counts = model.predict(future_years)
 
-            # Créer un DataFrame pour les prédictions
+            # Ajouter une incertitude croissante
+            lower_bound = predicted_counts * 0.8  # 20% en dessous
+            upper_bound = predicted_counts * 1.2  # 20% au-dessus
+
+            # Créer un DataFrame pour les prévisions
             future_df = pd.DataFrame({
                 'year': future_years.flatten(),
                 'count': predicted_counts,
-                'type': ['Prévision'] * len(future_years)
+                'lower': lower_bound,
+                'upper': upper_bound
             })
 
-            # Ajouter une colonne type au DataFrame original
-            yearly_counts['type'] = 'Historique'
+            # Utiliser la transformation logarithmique pour une meilleure visualisation
+            from src.utils.helpers import log_transform
+            yearly_counts['log_count'] = yearly_counts['count'].apply(log_transform)
+            future_df['log_count'] = future_df['count'].apply(log_transform)
+            future_df['log_lower'] = future_df['lower'].apply(log_transform)
+            future_df['log_upper'] = future_df['upper'].apply(log_transform)
 
-            # Combiner les données historiques et les prévisions
-            combined_df = pd.concat([yearly_counts, future_df], ignore_index=True)
-
-            # S'assurer que toutes les colonnes sont du même type
-            combined_df['year'] = combined_df['year'].astype(int)
-            combined_df['count'] = combined_df['count'].astype(float)
-            combined_df['type'] = combined_df['type'].astype(str)
-
-            # Créer le graphique avec go.Scatter au lieu de px.line
+            # Créer le graphique
             fig = go.Figure()
 
-            # Données historiques
+            # Données historiques avec échelle logarithmique
             fig.add_trace(go.Scatter(
                 x=yearly_counts['year'],
-                y=yearly_counts['count'],
+                y=yearly_counts['log_count'],
                 mode='markers+lines',
                 name='Données historiques',
                 marker=dict(color='#0071e3', size=8),
-                line=dict(color='#0071e3', width=2)
+                line=dict(color='#0071e3', width=2),
+                customdata=yearly_counts['count'],  # Stocker les valeurs originales
+                hovertemplate='%{x}: %{customdata} météorites<extra></extra>'
             ))
 
-            # Prévisions
+            # Prévisions avec échelle logarithmique
             fig.add_trace(go.Scatter(
                 x=future_df['year'],
-                y=future_df['count'],
+                y=future_df['log_count'],
                 mode='lines',
                 name='Prévisions',
-                line=dict(color='#ff9500', width=2, dash='dash')
+                line=dict(color='#ff9500', width=2),
+                customdata=future_df['count'],  # Stocker les valeurs originales
+                hovertemplate='%{x}: %{customdata:.0f} météorites (prévision)<extra></extra>'
             ))
 
+            # Zone d'incertitude avec échelle logarithmique
+            fig.add_trace(go.Scatter(
+                x=future_df['year'].tolist() + future_df['year'].tolist()[::-1],
+                y=future_df['log_upper'].tolist() + future_df['log_lower'].tolist()[::-1],
+                fill='toself',
+                fillcolor='rgba(255, 149, 0, 0.2)',
+                line=dict(color='rgba(255, 149, 0, 0)'),
+                hoverinfo='skip',
+                showlegend=False
+            ))
+
+            # Mise en page
             fig.update_layout(
-                title="Prévision des Découvertes de Météorites",
-                xaxis_title="Année",
-                yaxis_title="Nombre de météorites",
-                height=350,
-                margin=dict(l=10, r=10, t=40, b=10),
+                title={
+                    'text': 'Prévision des Découvertes de Météorites (Échelle Log)',
+                    'y': 0.9,
+                    'x': 0.5,
+                    'xanchor': 'center',
+                    'yanchor': 'top'
+                },
+                xaxis_title='Année',
+                yaxis_title='Nombre de météorites (log)',
+                margin={"r":10, "t":50, "l":10, "b":50},
+                paper_bgcolor='white',
+                plot_bgcolor='white',
                 legend=dict(
                     orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
+                    yanchor="top",
+                    y=0.99,
                     xanchor="right",
-                    x=1
-                ),
-                paper_bgcolor='white',
-                plot_bgcolor='white'
+                    x=0.99
+                )
             )
+
+            # Personnaliser les étiquettes de l'axe Y pour montrer les valeurs réelles
+            y_ticks = [1, 10, 100, 1000, 10000]
+            y_tick_labels = [str(val) for val in y_ticks]
+            y_tick_values = [log_transform(val) for val in y_ticks]
+
+            fig.update_yaxes(tickvals=y_tick_values, ticktext=y_tick_labels)
 
             return fig
 
-        except ImportError:
-            # Si sklearn n'est pas disponible
-            fig = go.Figure()
-            fig.add_annotation(
-                text="La bibliothèque scikit-learn est requise pour les prévisions",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5,
-                showarrow=False,
-                font=dict(size=14)
-            )
-            fig.update_layout(height=350)
-            return fig
         except Exception as e:
             # En cas d'erreur dans l'analyse
             print(f"Erreur dans la génération de prévisions: {str(e)}")

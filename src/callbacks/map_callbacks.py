@@ -212,90 +212,83 @@ def store_filtered_data(mass_range, classes, falls, decades):
     Stocke les données filtrées dans le composant dcc.Store
     """
     # Filtrer les données
+    print(f"Filtrage des données avec: mass={mass_range}, classes={classes}, falls={falls}, décennies={decades}")
     df = filter_data(mass_range, classes, falls, decades)
-
+    
+    print(f"Données filtrées: {len(df)} entrées")
+    
     # Retourner les données filtrées au format JSON
-    return df.to_json(date_format='iso', orient='split')
+    json_data = df.to_json(date_format='iso', orient='split')
+    return json_data
 
 # Callback pour générer les statistiques
 @callback(
     [Output('stats-count', 'children'),
      Output('stats-mass', 'children'),
-     Output('stats-years', 'children'),
-     Output('stats-classes', 'children'),
-     Output('timeline-mini', 'figure'),
-     Output('class-pie-mini', 'figure')],
+     Output('stats-avg-mass', 'children'),
+     Output('stats-fall-ratio', 'children')],
     [Input('filtered-data', 'data')]
 )
-def update_statistics(json_data):
+def update_statistics(filtered_data_json):
     """
     Met à jour les différentes statistiques basées sur les données filtrées
     """
-    if not json_data:
-        return "0", "0 g", "N/A", "N/A", {}, {}
-
     # Convertir les données JSON en DataFrame
-    df = pd.read_json(json_data, orient='split')
+    try:
+        print("Mise à jour des statistiques...")
+        if not filtered_data_json:
+            print("Aucune donnée filtrée disponible")
+            return "0", "0 g", "0 g", "N/A"
+        
+        df = pd.read_json(filtered_data_json, orient='split')
+        
+        if df.empty:
+            print("DataFrame vide")
+            return "0", "0 g", "0 g", "N/A"
 
-    if df.empty:
-        return "0", "0 g", "N/A", "N/A", {}, {}
+        # Nombre de météorites
+        count = len(df)
+        print(f"Nombre de météorites: {count}")
 
-    # Nombre de météorites
-    count = len(df)
+        # Masse totale
+        total_mass = df['mass (g)'].sum()
+        if total_mass >= 1e9:
+            mass_str = f"{total_mass/1e9:.1f}T g"
+        elif total_mass >= 1e6:
+            mass_str = f"{total_mass/1e6:.1f}M g"
+        elif total_mass >= 1e3:
+            mass_str = f"{total_mass/1e3:.1f}k g"
+        else:
+            mass_str = f"{total_mass:.1f} g"
+        
+        print(f"Masse totale: {mass_str}")
 
-    # Masse totale
-    total_mass = df['mass (g)'].sum()
-    if total_mass >= 1e9:
-        mass_str = f"{total_mass/1e9:.1f}T"
-    elif total_mass >= 1e6:
-        mass_str = f"{total_mass/1e6:.1f}M"
-    elif total_mass >= 1e3:
-        mass_str = f"{total_mass/1e3:.1f}k"
-    else:
-        mass_str = f"{total_mass:.1f}"
+        # Masse moyenne
+        avg_mass = df['mass (g)'].mean()
+        if avg_mass >= 1e6:
+            avg_mass_str = f"{avg_mass/1e6:.2f}M g"
+        elif avg_mass >= 1e3:
+            avg_mass_str = f"{avg_mass/1e3:.2f}k g"
+        else:
+            avg_mass_str = f"{avg_mass:.2f} g"
+        
+        print(f"Masse moyenne: {avg_mass_str}")
 
-    # Période couverte
-    min_year = df['year'].min()
-    max_year = df['year'].max()
-    years_str = f"{min_year}-{max_year}"
+        # Ratio Observé/Trouvé
+        fell_count = len(df[df['fall'] == 'Fell'])
+        found_count = len(df[df['fall'] == 'Found'])
+        if found_count > 0:
+            ratio = fell_count / found_count
+            ratio_str = f"{ratio:.2f}"
+        else:
+            ratio_str = "N/A"
+        
+        print(f"Ratio Observé/Trouvé: {ratio_str}")
 
-    # Classes principales
-    top_classes = df['class'].value_counts().head(3).index.tolist()
-    classes_str = ", ".join(top_classes)
-
-    # Timeline mini figure
-    timeline_fig = px.histogram(
-        df,
-        x='year',
-        nbins=30,
-        color_discrete_sequence=[COLOR_SCHEMES['primary']]
-    )
-    timeline_fig.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis_title="",
-        yaxis_title="",
-        showlegend=False,
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=False)
-    )
-
-    # Class pie mini figure
-    class_counts = df['class'].value_counts().head(5)
-    class_fig = px.pie(
-        names=class_counts.index,
-        values=class_counts.values,
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Pastel
-    )
-    class_fig.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor='rgba(0,0,0,0)',
-        showlegend=False
-    )
-
-    return str(count), mass_str, years_str, classes_str, timeline_fig, class_fig
+        return str(count), mass_str, avg_mass_str, ratio_str
+    except Exception as e:
+        print(f"Erreur dans update_statistics: {e}")
+        return "Erreur", "Erreur", "Erreur", "Erreur"
 
 # Fonction utilitaire pour créer une carte vide
 def create_empty_map(map_style):
